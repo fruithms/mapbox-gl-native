@@ -373,6 +373,7 @@ set(MBGL_CORE_FILES
     include/mbgl/style/conversion/constant.hpp
     include/mbgl/style/conversion/coordinate.hpp
     include/mbgl/style/conversion/data_driven_property_value.hpp
+    include/mbgl/style/conversion/expression.hpp
     include/mbgl/style/conversion/filter.hpp
     include/mbgl/style/conversion/function.hpp
     include/mbgl/style/conversion/geojson.hpp
@@ -390,6 +391,11 @@ set(MBGL_CORE_FILES
     src/mbgl/style/conversion/json.hpp
     src/mbgl/style/conversion/stringify.hpp
 
+    # style/expression
+    include/mbgl/style/expression/expression.hpp
+    include/mbgl/style/expression/parse.hpp
+    include/mbgl/style/expression/parsing_context.hpp
+
     # style/function
     include/mbgl/style/function/camera_function.hpp
     include/mbgl/style/function/categorical_stops.hpp
@@ -401,8 +407,11 @@ set(MBGL_CORE_FILES
     include/mbgl/style/function/identity_stops.hpp
     include/mbgl/style/function/interval_stops.hpp
     include/mbgl/style/function/source_function.hpp
+    include/mbgl/style/function/type.hpp
     src/mbgl/style/function/categorical_stops.cpp
+    src/mbgl/style/function/expression.cpp
     src/mbgl/style/function/identity_stops.cpp
+    src/mbgl/style/function/type.cpp
 
     # style/layers
     include/mbgl/style/layers/background_layer.hpp
