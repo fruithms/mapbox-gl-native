@@ -44,8 +44,17 @@ public:
     // Exposed for use with pure Feature objects (e.g. beyond the context of tiled map data).
     optional<OutputValue> evaluate(float, const Feature&, EvaluationError&) const;
     
-    type::Type getType() {
+    type::Type getType() const {
         return type;
+    }
+    
+    type::ValueType getResultType() const {
+        return type.match(
+            [&] (const type::Lambda& lambdaType) {
+                return lambdaType.getResult();
+            },
+            [&] (const auto& t) -> type::ValueType { return t; }
+        );
     }
     
     bool isFeatureConstant() {
@@ -110,20 +119,149 @@ private:
 
 class LambdaExpression : public Expression {
 public:
+    using Args = std::vector<std::unique_ptr<Expression>>;
+
     LambdaExpression(std::string key,
-                    type::Lambda type,
                     std::string name_,
-                    std::vector<std::unique_ptr<Expression>> args_) :
+                    Args args_,
+                    type::Lambda type) :
         Expression(key, type),
-        name(name_),
-        args(std::move(args_))
+        args(std::move(args_)),
+        name(name_)
     {}
     
+    template <class V>
+    static variant<CompileError, Args> parseArgs(const V& value, const ParsingContext& ctx) {
+        assert(isArray(value));
+        auto length = arrayLength(value);
+        Args args;
+        for(size_t i = 1; i < length; i++) {
+            const auto& arg = arrayMember(value, i);
+            auto parsedArg = parseExpression(arg, ParsingContext(ctx, i, {}));
+            if (parsedArg.template is<std::unique_ptr<Expression>>()) {
+                args.push_back(std::move(parsedArg.template get<std::unique_ptr<Expression>>()));
+            } else {
+                return parsedArg.template get<CompileError>();
+            }
+        }
+        return std::move(args);
+    }
+    
+protected:
+    Args args;
 private:
     std::string name;
-    std::vector<std::unique_ptr<Expression>> args;
 };
 
+template <typename T, typename Rfunc>
+optional<OutputValue> evaluateBinaryOperator(float z,
+                                            const GeometryTileFeature& f,
+                                            EvaluationError& e,
+                                            const LambdaExpression::Args& args,
+                                            optional<T> initial,
+                                            Rfunc reduce)
+{
+    optional<T> memo = initial;
+    for(const auto& arg : args) {
+        auto argValue = arg->evaluate(z, f, e);
+        if (!argValue) return {};
+        if (!memo) memo = {argValue->get<T>()};
+        else memo = reduce(*memo, argValue->get<T>());
+    }
+    return {*memo};
+}
+
+class PlusExpression : public LambdaExpression {
+public:
+    PlusExpression(std::string key, Args args) :
+        LambdaExpression(key, "+", std::move(args),
+                        {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
+    {}
+    
+    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
+        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+            {}, [](float memo, float next) { return memo + next; });
+    }
+    
+    template <class V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        auto args = LambdaExpression::parseArgs(value, ctx);
+        if (args.template is<LambdaExpression::Args>()) {
+            return std::make_unique<PlusExpression>(ctx.key(), std::move(args.template get<Args>()));
+        } else {
+            return args.template get<CompileError>();
+        }
+    }
+};
+
+class TimesExpression : public LambdaExpression {
+public:
+    TimesExpression(std::string key, Args args) :
+        LambdaExpression(key, "*", std::move(args),
+                        {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
+    {}
+    
+    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
+        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+            {}, [](float memo, float next) { return memo * next; });
+    }
+    
+    template <class V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        auto args = LambdaExpression::parseArgs(value, ctx);
+        if (args.template is<LambdaExpression::Args>()) {
+            return std::make_unique<TimesExpression>(ctx.key(), std::move(args.template get<Args>()));
+        } else {
+            return args.template get<CompileError>();
+        }
+    }
+};
+
+class MinusExpression : public LambdaExpression {
+public:
+    MinusExpression(std::string key, Args args) :
+        LambdaExpression(key, "-", std::move(args),
+                        {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
+    {}
+    
+    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
+        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+            {}, [](float memo, float next) { return memo - next; });
+    }
+    
+    template <class V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        auto args = LambdaExpression::parseArgs(value, ctx);
+        if (args.template is<LambdaExpression::Args>()) {
+            return std::make_unique<MinusExpression>(ctx.key(), std::move(args.template get<Args>()));
+        } else {
+            return args.template get<CompileError>();
+        }
+    }
+};
+
+class DivideExpression : public LambdaExpression {
+public:
+    DivideExpression(std::string key, Args args) :
+        LambdaExpression(key, "/", std::move(args),
+                        {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
+    {}
+    
+    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
+        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+            {}, [](float memo, float next) { return memo / next; });
+    }
+    
+    template <class V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        auto args = LambdaExpression::parseArgs(value, ctx);
+        if (args.template is<LambdaExpression::Args>()) {
+            return std::make_unique<DivideExpression>(ctx.key(), std::move(args.template get<Args>()));
+        } else {
+            return args.template get<CompileError>();
+        }
+    }
+};
 
 
 

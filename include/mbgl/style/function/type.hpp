@@ -104,6 +104,7 @@ public:
     std::string getName() const {
         return "lambda";
     }
+    ValueType getResult() const { return result; }
 private:
     ValueType result;
     std::vector<ValueType> params;

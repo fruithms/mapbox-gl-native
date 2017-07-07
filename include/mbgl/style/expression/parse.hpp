@@ -54,8 +54,26 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
             };
             return error;
         }
-    }
+        
+        if (*op == "+") return PlusExpression::parse(value, context);
+        if (*op == "-") return MinusExpression::parse(value, context);
+        if (*op == "*") return TimesExpression::parse(value, context);
+        if (*op == "/") return DivideExpression::parse(value, context);
 
+        
+        return CompileError {
+            std::string("Unknown expression \"") + *op + "\". If you wanted a literal array, use [\"literal\", [...]].",
+            context.key(0)
+        };
+    }
+    
+    if (isObject(value)) {
+        return CompileError {
+            "Bare objects invalid. Use [\"literal\", {...}] instead.",
+            context.key()
+        };
+    }
+    
     return LiteralExpression::parse(value, context);
 }
 
