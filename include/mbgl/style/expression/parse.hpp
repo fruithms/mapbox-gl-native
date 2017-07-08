@@ -55,10 +55,10 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
             return error;
         }
         
-        if (*op == "+") return PlusExpression::parse(value, context);
-        if (*op == "-") return MinusExpression::parse(value, context);
-        if (*op == "*") return TimesExpression::parse(value, context);
-        if (*op == "/") return DivideExpression::parse(value, context);
+        if (*op == "+") return LambdaExpression::parse<PlusExpression>(value, context);
+        if (*op == "-") return LambdaExpression::parse<MinusExpression>(value, context);
+        if (*op == "*") return LambdaExpression::parse<TimesExpression>(value, context);
+        if (*op == "/") return LambdaExpression::parse<DivideExpression>(value, context);
 
         
         return CompileError {

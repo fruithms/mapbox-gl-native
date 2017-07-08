@@ -130,8 +130,8 @@ public:
         name(name_)
     {}
     
-    template <class V>
-    static variant<CompileError, Args> parseArgs(const V& value, const ParsingContext& ctx) {
+    template <class Expr, class V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
         assert(isArray(value));
         auto length = arrayLength(value);
         Args args;
@@ -144,7 +144,7 @@ public:
                 return parsedArg.template get<CompileError>();
             }
         }
-        return std::move(args);
+        return std::make_unique<Expr>(ctx.key(), std::move(args));
     }
     
 protected:
@@ -182,16 +182,6 @@ public:
         return evaluateBinaryOperator<float>(zoom, feature, error, args,
             {}, [](float memo, float next) { return memo + next; });
     }
-    
-    template <class V>
-    static ParseResult parse(const V& value, const ParsingContext& ctx) {
-        auto args = LambdaExpression::parseArgs(value, ctx);
-        if (args.template is<LambdaExpression::Args>()) {
-            return std::make_unique<PlusExpression>(ctx.key(), std::move(args.template get<Args>()));
-        } else {
-            return args.template get<CompileError>();
-        }
-    }
 };
 
 class TimesExpression : public LambdaExpression {
@@ -204,16 +194,6 @@ public:
     optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
         return evaluateBinaryOperator<float>(zoom, feature, error, args,
             {}, [](float memo, float next) { return memo * next; });
-    }
-    
-    template <class V>
-    static ParseResult parse(const V& value, const ParsingContext& ctx) {
-        auto args = LambdaExpression::parseArgs(value, ctx);
-        if (args.template is<LambdaExpression::Args>()) {
-            return std::make_unique<TimesExpression>(ctx.key(), std::move(args.template get<Args>()));
-        } else {
-            return args.template get<CompileError>();
-        }
     }
 };
 
@@ -228,16 +208,6 @@ public:
         return evaluateBinaryOperator<float>(zoom, feature, error, args,
             {}, [](float memo, float next) { return memo - next; });
     }
-    
-    template <class V>
-    static ParseResult parse(const V& value, const ParsingContext& ctx) {
-        auto args = LambdaExpression::parseArgs(value, ctx);
-        if (args.template is<LambdaExpression::Args>()) {
-            return std::make_unique<MinusExpression>(ctx.key(), std::move(args.template get<Args>()));
-        } else {
-            return args.template get<CompileError>();
-        }
-    }
 };
 
 class DivideExpression : public LambdaExpression {
@@ -250,16 +220,6 @@ public:
     optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
         return evaluateBinaryOperator<float>(zoom, feature, error, args,
             {}, [](float memo, float next) { return memo / next; });
-    }
-    
-    template <class V>
-    static ParseResult parse(const V& value, const ParsingContext& ctx) {
-        auto args = LambdaExpression::parseArgs(value, ctx);
-        if (args.template is<LambdaExpression::Args>()) {
-            return std::make_unique<DivideExpression>(ctx.key(), std::move(args.template get<Args>()));
-        } else {
-            return args.template get<CompileError>();
-        }
     }
 };
 
