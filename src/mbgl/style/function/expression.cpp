@@ -29,18 +29,18 @@ public:
         return {};
     }
 
-    optional<Value> getValue(const std::string& key) const override {
+    optional<mbgl::Value> getValue(const std::string& key) const override {
         auto it = feature.properties.find(key);
         if (it != feature.properties.end()) {
-            return optional<Value>(it->second);
+            return optional<mbgl::Value>(it->second);
         }
-        return optional<Value>();
+        return optional<mbgl::Value>();
     }
 };
 
-optional<OutputValue> Expression::evaluate(float z, const Feature& feature, EvaluationError& error) const {
+EvaluationResult Expression::evaluate(float z, const Feature& feature) const {
     std::unique_ptr<const GeometryTileFeature> f = std::make_unique<const GeoJSONFeature>(feature);
-    return this->evaluate(z, *f, error);
+    return this->evaluate(EvaluationParameters {z, *f});
 }
 
 

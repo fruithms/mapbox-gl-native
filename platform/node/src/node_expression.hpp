@@ -16,6 +16,8 @@ using namespace mbgl::style::expression;
 
 namespace node_mbgl {
 
+v8::Local<v8::Value> toJS(const Value&);
+
 class NodeExpression : public Nan::ObjectWrap {
 public:
     static void Init(v8::Local<v8::Object>);

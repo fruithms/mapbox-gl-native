@@ -73,6 +73,55 @@ void NodeExpression::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     info.GetReturnValue().Set(info.This());
 }
 
+struct ToValue {
+    v8::Local<v8::Value> operator()(mbgl::NullValue) {
+        Nan::EscapableHandleScope scope;
+        return scope.Escape(Nan::Null());
+    }
+
+    v8::Local<v8::Value> operator()(bool t) {
+        Nan::EscapableHandleScope scope;
+        return scope.Escape(Nan::New(t));
+    }
+
+    v8::Local<v8::Value> operator()(float t) {
+        Nan::EscapableHandleScope scope;
+        return scope.Escape(Nan::New(t));
+    }
+
+    v8::Local<v8::Value> operator()(const std::string& t) {
+        Nan::EscapableHandleScope scope;
+        return scope.Escape(Nan::New(t).ToLocalChecked());
+    }
+
+    v8::Local<v8::Value> operator()(const std::vector<Value>& array) {
+        Nan::EscapableHandleScope scope;
+        v8::Local<v8::Array> result = Nan::New<v8::Array>();
+        for (unsigned int i = 0; i < array.size(); i++) {
+            result->Set(i, toJS(array[i]));
+        }
+        return scope.Escape(result);
+    }
+    
+    v8::Local<v8::Value> operator()(const mbgl::Color& color) {
+        return operator()(color.stringify().c_str());
+    }
+
+    v8::Local<v8::Value> operator()(const std::unordered_map<std::string, Value>& map) {
+        Nan::EscapableHandleScope scope;
+        v8::Local<v8::Object> result = Nan::New<v8::Object>();
+        for (const auto& entry : map) {
+            Nan::Set(result, Nan::New(entry.first).ToLocalChecked(), toJS(entry.second));
+        }
+
+        return scope.Escape(result);
+    }
+};
+
+v8::Local<v8::Value> toJS(const Value& value) {
+    return Value::visit(value, ToValue());
+}
+
 void NodeExpression::Evaluate(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     NodeExpression* nodeExpr = ObjectWrap::Unwrap<NodeExpression>(info.Holder());
     const auto& expression = nodeExpr->expression;
@@ -99,29 +148,19 @@ void NodeExpression::Evaluate(const Nan::FunctionCallbackInfo<v8::Value>& info) 
 
     try {
         mapbox::geojson::feature feature = geoJSON->get<mapbox::geojson::feature>();
-        EvaluationError error;
-        auto result = expression->evaluate(zoom, feature, error);
-        if (result) {
-            result->match(
-                [&] (const std::array<float, 2>&) {},
-                [&] (const std::array<float, 4>&) {},
-                [&] (const std::string s) {
-                    info.GetReturnValue().Set(Nan::New(s.c_str()).ToLocalChecked());
-                },
-                [&] (const mbgl::Color& c) {
-                    info.GetReturnValue().Set(Nan::New(c.stringify().c_str()).ToLocalChecked());
-                },
-                [&] (const auto& v) {
-                    info.GetReturnValue().Set(Nan::New(v));
-                }
-            );
-        } else {
-            v8::Local<v8::Object> res = Nan::New<v8::Object>();
-            Nan::Set(res,
-                    Nan::New("error").ToLocalChecked(),
-                    Nan::New(error.message.c_str()).ToLocalChecked());
-            info.GetReturnValue().Set(res);
-        }
+        auto result = expression->evaluate(zoom, feature);
+        result.match(
+            [&] (const Value& v) {
+                info.GetReturnValue().Set(toJS(v));
+            },
+            [&] (const EvaluationError& error) {
+                v8::Local<v8::Object> res = Nan::New<v8::Object>();
+                Nan::Set(res,
+                        Nan::New("error").ToLocalChecked(),
+                        Nan::New(error.message.c_str()).ToLocalChecked());
+                info.GetReturnValue().Set(res);
+            }
+        );
     } catch(std::exception &ex) {
         return Nan::ThrowTypeError(ex.what());
     }

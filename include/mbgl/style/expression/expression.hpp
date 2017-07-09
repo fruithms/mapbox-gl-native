@@ -4,11 +4,13 @@
 #include <vector>
 #include <memory>
 #include <mbgl/util/optional.hpp>
+#include <mbgl/util/variant.hpp>
 #include <mbgl/util/color.hpp>
 #include <mbgl/style/function/type.hpp>
 #include <mbgl/util/feature.hpp>
 #include <mbgl/style/expression/parsing_context.hpp>
 #include <mbgl/style/conversion.hpp>
+
 
 namespace mbgl {
 
@@ -18,31 +20,40 @@ class GeometryTileFeature;
 namespace style {
 namespace expression {
 
-using OutputValue = variant<
+struct Value;
+using ValueBase = variant<
+    NullValue,
     float,
     std::string,
     mbgl::Color,
-    std::array<float, 2>,
-    std::array<float, 4>>;
+    mapbox::util::recursive_wrapper<std::vector<Value>>,
+    mapbox::util::recursive_wrapper<std::unordered_map<std::string, Value>>>;
+struct Value : ValueBase {
+    using ValueBase::ValueBase;
+};
+
+constexpr NullValue Null = NullValue();
 
 struct EvaluationError {
     std::string message;
 };
 
-struct CompileError {
-    std::string message;
-    std::string key;
+struct EvaluationParameters {
+    float zoom;
+    const GeometryTileFeature& feature;
 };
+
+using EvaluationResult = variant<EvaluationError, Value>;
 
 class Expression {
 public:
     Expression(std::string key_, type::Type type_) : key(key_), type(type_) {}
     virtual ~Expression() {}
     
-    virtual optional<OutputValue> evaluate(float, const GeometryTileFeature&, EvaluationError& e) const = 0;
+    virtual EvaluationResult evaluate(const EvaluationParameters&) const = 0;
     
     // Exposed for use with pure Feature objects (e.g. beyond the context of tiled map data).
-    optional<OutputValue> evaluate(float, const Feature&, EvaluationError&) const;
+    EvaluationResult evaluate(float, const Feature&) const;
     
     type::Type getType() const {
         return type;
@@ -70,6 +81,10 @@ private:
     type::Type type;
 };
 
+struct CompileError {
+    std::string message;
+    std::string key;
+};
 using ParseResult = variant<CompileError, std::unique_ptr<Expression>>;
 template <class V>
 ParseResult parseExpression(const V& value, const ParsingContext& context);
@@ -81,16 +96,16 @@ public:
     LiteralExpression(std::string key, float value_) : Expression(key, type::Primitive::Number), value(value_) {}
     LiteralExpression(std::string key, const std::string& value_) : Expression(key, type::Primitive::String), value(value_) {}
     LiteralExpression(std::string key, const mbgl::Color& value_) : Expression(key, type::Primitive::Color), value(value_) {}
-    LiteralExpression(std::string key) : Expression(key, type::Primitive::Null) {}
-    
-    optional<OutputValue> evaluate(float, const GeometryTileFeature&, EvaluationError&) const override {
+    LiteralExpression(std::string key, const NullValue&) : Expression(key, type::Primitive::Null), value(Null) {}
+
+    EvaluationResult evaluate(const EvaluationParameters&) const override {
         return value;
     }
     
     template <class V>
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
         if (isUndefined(value))
-            return std::make_unique<LiteralExpression>(ctx.key());
+            return std::make_unique<LiteralExpression>(ctx.key(), Null);
         
         if (isObject(value)) {
             return CompileError {ctx.key(), "Unimplemented: object literals"};
@@ -114,7 +129,7 @@ public:
     }
     
 private:
-    optional<OutputValue> value;
+    Value value;
 };
 
 class LambdaExpression : public Expression {
@@ -154,19 +169,20 @@ private:
 };
 
 template <typename T, typename Rfunc>
-optional<OutputValue> evaluateBinaryOperator(float z,
-                                            const GeometryTileFeature& f,
-                                            EvaluationError& e,
+EvaluationResult evaluateBinaryOperator(const EvaluationParameters& params,
                                             const LambdaExpression::Args& args,
                                             optional<T> initial,
                                             Rfunc reduce)
 {
     optional<T> memo = initial;
     for(const auto& arg : args) {
-        auto argValue = arg->evaluate(z, f, e);
-        if (!argValue) return {};
-        if (!memo) memo = {argValue->get<T>()};
-        else memo = reduce(*memo, argValue->get<T>());
+        auto argValue = arg->evaluate(params);
+        if (argValue.is<EvaluationError>()) {
+            return argValue.get<EvaluationError>();
+        }
+        T value = argValue.get<Value>().get<T>();
+        if (!memo) memo = {value};
+        else memo = reduce(*memo, value);
     }
     return {*memo};
 }
@@ -178,8 +194,8 @@ public:
                         {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
     {}
     
-    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
-        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+    EvaluationResult evaluate(const EvaluationParameters& params) const override {
+        return evaluateBinaryOperator<float>(params, args,
             {}, [](float memo, float next) { return memo + next; });
     }
 };
@@ -191,8 +207,8 @@ public:
                         {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
     {}
     
-    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
-        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+    EvaluationResult evaluate(const EvaluationParameters& params) const override {
+        return evaluateBinaryOperator<float>(params, args,
             {}, [](float memo, float next) { return memo * next; });
     }
 };
@@ -204,8 +220,8 @@ public:
                         {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
     {}
     
-    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
-        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+    EvaluationResult evaluate(const EvaluationParameters& params) const override {
+        return evaluateBinaryOperator<float>(params, args,
             {}, [](float memo, float next) { return memo - next; });
     }
 };
@@ -217,8 +233,8 @@ public:
                         {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
     {}
     
-    optional<OutputValue> evaluate(float zoom, const GeometryTileFeature& feature, EvaluationError& error) const override {
-        return evaluateBinaryOperator<float>(zoom, feature, error, args,
+    EvaluationResult evaluate(const EvaluationParameters& params) const override {
+        return evaluateBinaryOperator<float>(params, args,
             {}, [](float memo, float next) { return memo / next; });
     }
 };
