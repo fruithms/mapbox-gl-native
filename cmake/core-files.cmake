@@ -395,6 +395,10 @@ set(MBGL_CORE_FILES
     include/mbgl/style/expression/expression.hpp
     include/mbgl/style/expression/parse.hpp
     include/mbgl/style/expression/parsing_context.hpp
+    include/mbgl/style/expression/type.hpp
+    include/mbgl/style/expression/value.hpp
+    src/mbgl/style/expression/type.cpp
+    src/mbgl/style/expression/value.cpp
 
     # style/function
     include/mbgl/style/function/camera_function.hpp
@@ -407,11 +411,9 @@ set(MBGL_CORE_FILES
     include/mbgl/style/function/identity_stops.hpp
     include/mbgl/style/function/interval_stops.hpp
     include/mbgl/style/function/source_function.hpp
-    include/mbgl/style/function/type.hpp
     src/mbgl/style/function/categorical_stops.cpp
     src/mbgl/style/function/expression.cpp
     src/mbgl/style/function/identity_stops.cpp
-    src/mbgl/style/function/type.cpp
 
     # style/layers
     include/mbgl/style/layers/background_layer.hpp

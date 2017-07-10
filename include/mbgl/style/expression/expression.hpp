@@ -6,8 +6,8 @@
 #include <mbgl/util/optional.hpp>
 #include <mbgl/util/variant.hpp>
 #include <mbgl/util/color.hpp>
-#include <mbgl/style/function/type.hpp>
-#include <mbgl/util/feature.hpp>
+#include <mbgl/style/expression/type.hpp>
+#include <mbgl/style/expression/value.hpp>
 #include <mbgl/style/expression/parsing_context.hpp>
 #include <mbgl/style/conversion.hpp>
 
@@ -19,20 +19,6 @@ class GeometryTileFeature;
 
 namespace style {
 namespace expression {
-
-struct Value;
-using ValueBase = variant<
-    NullValue,
-    float,
-    std::string,
-    mbgl::Color,
-    mapbox::util::recursive_wrapper<std::vector<Value>>,
-    mapbox::util::recursive_wrapper<std::unordered_map<std::string, Value>>>;
-struct Value : ValueBase {
-    using ValueBase::ValueBase;
-};
-
-constexpr NullValue Null = NullValue();
 
 struct EvaluationError {
     std::string message;
@@ -57,15 +43,6 @@ public:
     
     type::Type getType() const {
         return type;
-    }
-    
-    type::ValueType getResultType() const {
-        return type.match(
-            [&] (const type::Lambda& lambdaType) {
-                return lambdaType.getResult();
-            },
-            [&] (const auto& t) -> type::ValueType { return t; }
-        );
     }
     
     bool isFeatureConstant() {
@@ -102,17 +79,7 @@ public:
     template <class V>
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
         const Value& parsedValue = parseValue(value);
-        const type::Type& type = parsedValue.match(
-            [&](float) -> type::Type { return type::Primitive::Number; },
-            [&](const std::string&) -> type::Type { return type::Primitive::String; },
-            [&](const mbgl::Color&) -> type::Type { return type::Primitive::Color; },
-            [&](const NullValue&) -> type::Type { return type::Primitive::Null; },
-            [&](const std::unordered_map<std::string, Value>&) -> type::Type { return type::Primitive::Object; },
-            [&](const std::vector<Value>& arr) -> type::Type {
-                // TODO
-                return type::Array(type::Primitive::Value, arr.size());
-            }
-        );
+        const type::Type& type = typeOf(parsedValue);
         return std::make_unique<LiteralExpression>(ctx.key(), type, parsedValue);
     }
     
@@ -149,6 +116,11 @@ private:
     Value value;
 };
 
+struct NArgs {
+    std::vector<type::Type> types;
+    optional<std::size_t> N;
+};
+
 class LambdaExpression : public Expression {
 public:
     using Args = std::vector<std::unique_ptr<Expression>>;
@@ -156,7 +128,7 @@ public:
     LambdaExpression(std::string key,
                     std::string name_,
                     Args args_,
-                    type::Lambda type) :
+                    type::Type type) :
         Expression(key, type),
         args(std::move(args_)),
         name(name_)
@@ -207,8 +179,7 @@ EvaluationResult evaluateBinaryOperator(const EvaluationParameters& params,
 class PlusExpression : public LambdaExpression {
 public:
     PlusExpression(std::string key, Args args) :
-        LambdaExpression(key, "+", std::move(args),
-                        {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
+        LambdaExpression(key, "+", std::move(args), type::Number)
     {}
     
     EvaluationResult evaluate(const EvaluationParameters& params) const override {
@@ -220,8 +191,7 @@ public:
 class TimesExpression : public LambdaExpression {
 public:
     TimesExpression(std::string key, Args args) :
-        LambdaExpression(key, "*", std::move(args),
-                        {type::Primitive::Number, {type::NArgs({type::Primitive::Number})}})
+        LambdaExpression(key, "*", std::move(args), type::Number)
     {}
     
     EvaluationResult evaluate(const EvaluationParameters& params) const override {
@@ -233,8 +203,7 @@ public:
 class MinusExpression : public LambdaExpression {
 public:
     MinusExpression(std::string key, Args args) :
-        LambdaExpression(key, "-", std::move(args),
-                        {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
+        LambdaExpression(key, "-", std::move(args), type::Number)
     {}
     
     EvaluationResult evaluate(const EvaluationParameters& params) const override {
@@ -246,8 +215,7 @@ public:
 class DivideExpression : public LambdaExpression {
 public:
     DivideExpression(std::string key, Args args) :
-        LambdaExpression(key, "/", std::move(args),
-                        {type::Primitive::Number, {type::Primitive::Number, type::Primitive::Number}})
+        LambdaExpression(key, "/", std::move(args), type::Number)
     {}
     
     EvaluationResult evaluate(const EvaluationParameters& params) const override {

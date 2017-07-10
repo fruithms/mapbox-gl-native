@@ -11,7 +11,6 @@
 #include <nan.h>
 #pragma GCC diagnostic pop
 
-using namespace mbgl::style;
 using namespace mbgl::style::expression;
 
 namespace node_mbgl {
