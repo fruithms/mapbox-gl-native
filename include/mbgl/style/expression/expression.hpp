@@ -93,10 +93,7 @@ using namespace mbgl::style::conversion;
 
 class LiteralExpression : public Expression {
 public:
-    LiteralExpression(std::string key, float value_) : Expression(key, type::Primitive::Number), value(value_) {}
-    LiteralExpression(std::string key, const std::string& value_) : Expression(key, type::Primitive::String), value(value_) {}
-    LiteralExpression(std::string key, const mbgl::Color& value_) : Expression(key, type::Primitive::Color), value(value_) {}
-    LiteralExpression(std::string key, const NullValue&) : Expression(key, type::Primitive::Null), value(Null) {}
+    LiteralExpression(std::string key, type::Type type, Value value_) : Expression(key, type), value(value_) {}
 
     EvaluationResult evaluate(const EvaluationParameters&) const override {
         return value;
@@ -104,31 +101,51 @@ public:
     
     template <class V>
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
-        if (isUndefined(value))
-            return std::make_unique<LiteralExpression>(ctx.key(), Null);
-        
+        const Value& parsedValue = parseValue(value);
+        const type::Type& type = parsedValue.match(
+            [&](float) -> type::Type { return type::Primitive::Number; },
+            [&](const std::string&) -> type::Type { return type::Primitive::String; },
+            [&](const mbgl::Color&) -> type::Type { return type::Primitive::Color; },
+            [&](const NullValue&) -> type::Type { return type::Primitive::Null; },
+            [&](const std::unordered_map<std::string, Value>&) -> type::Type { return type::Primitive::Object; },
+            [&](const std::vector<Value>& arr) -> type::Type {
+                // TODO
+                return type::Array(type::Primitive::Value, arr.size());
+            }
+        );
+        return std::make_unique<LiteralExpression>(ctx.key(), type, parsedValue);
+    }
+    
+private:
+    template <class V>
+    static Value parseValue(const V& value) {
+        if (isUndefined(value)) return Null;
         if (isObject(value)) {
-            return CompileError {ctx.key(), "Unimplemented: object literals"};
+            std::unordered_map<std::string, Value> result;
+            eachMember(value, [&] (const std::string& k, const V& v) -> optional<conversion::Error> {
+                result.emplace(k, parseValue(v));
+                return {};
+            });
+            return result;
         }
-        
         if (isArray(value)) {
-            return CompileError {ctx.key(), "Unimplemented: array literals"};
+            std::vector<Value> result;
+            const auto length = arrayLength(value);
+            for(std::size_t i = 0; i < length; i++) {
+                result.emplace_back(parseValue(arrayMember(value, i)));
+            }
+            return result;
         }
         
         optional<mbgl::Value> v = toValue(value);
         assert(v);
         return v->match(
-            [&] (std::string s) { return std::make_unique<LiteralExpression>(ctx.key(), s); },
-            [&] (bool b) { return std::make_unique<LiteralExpression>(ctx.key(), b); },
-            [&] (auto f) {
-                auto number = numericValue<float>(f);
-                assert(number);
-                return std::make_unique<LiteralExpression>(ctx.key(), *number);
-            }
+            [&] (const std::string& s) -> Value { return s; },
+            [&] (bool b) -> Value { return b; },
+            [&] (auto f) -> Value { return *numericValue<float>(f); }
         );
     }
-    
-private:
+
     Value value;
 };
 

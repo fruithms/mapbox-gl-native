@@ -37,7 +37,8 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
     using namespace mbgl::style::conversion;
     
     if (isArray(value)) {
-        if (arrayLength(value) == 0) {
+        const std::size_t length = arrayLength(value);
+        if (length == 0) {
             CompileError error = {
                 "Expected an array with at least one element. If you wanted a literal array, use [\"literal\", []].",
                 context.key()
@@ -53,6 +54,14 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
                 context.key(0)
             };
             return error;
+        }
+        
+        if (*op == "literal") {
+            if (length != 2) return CompileError {
+                "'literal' expression requires exactly one argument, but found " + std::to_string(length - 1) + " instead.",
+                context.key()
+            };
+            return LiteralExpression::parse(arrayMember(value, 1), ParsingContext(context, {1}, {"literal"}));
         }
         
         if (*op == "+") return LambdaExpression::parse<PlusExpression>(value, context);

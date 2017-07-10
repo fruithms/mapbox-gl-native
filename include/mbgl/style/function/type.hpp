@@ -42,7 +42,7 @@ public:
     static Primitive Object;
     
     // It's weird for this to be on Primitive.  Where should it go?
-    static Type Value;
+    static ValueType Value;
     
 private:
     std::string name;
@@ -60,7 +60,7 @@ private:
 class Array {
 public:
     Array(ValueType itemType_) : itemType(itemType_) {}
-    Array(ValueType itemType_, int N_) : itemType(itemType_), N(N_) {}
+    Array(ValueType itemType_, std::size_t N_) : itemType(itemType_), N(N_) {}
     std::string getName() const {
         return "array";
     }

@@ -12,7 +12,7 @@ Primitive Primitive::Color = {"Color"};
 Primitive Primitive::Object = {"Object"};
 
 // Need to add Array(Types::Value) to the member list somehow...
-Type Primitive::Value = Variant({
+    ValueType Primitive::Value = Variant({
     Primitive::Null,
     Primitive::String,
     Primitive::Number,
