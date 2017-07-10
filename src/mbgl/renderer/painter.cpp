@@ -43,22 +43,6 @@ namespace mbgl {
 
 using namespace style;
 
-static auto rasterPrimitives() {
-    IndexedPrimitives<gl::Triangles, RasterLayoutVertex, RasterAttributes> primitives;
-    primitives.add(
-        {
-            RasterProgram::layoutVertex({ 0,            0            }, { 0,     0 }),
-            RasterProgram::layoutVertex({ util::EXTENT, 0            }, { 32767, 0 }),
-            RasterProgram::layoutVertex({ 0,            util::EXTENT }, { 0,     32767 }),
-            RasterProgram::layoutVertex({ util::EXTENT, util::EXTENT }, { 32767, 32767 }),
-        }, {
-            {{ 0, 1, 2 }},
-            {{ 1, 2, 3 }},
-        }
-    );
-    return primitives;
-}
-
 static auto borderPrimitives() {
     IndexedPrimitives<gl::LineStrip, DebugLayoutVertex, DebugAttributes> primitives;
     primitives.add(
@@ -116,7 +100,6 @@ Painter::Painter(gl::Context& context_,
                  const optional<std::string>& programCacheDir)
     : context(context_),
       state(state_),
-      rasterDrawable(context, rasterPrimitives()),
       fillDrawable(context, fillPrimitives()),
       borderDrawable(context, borderPrimitives()),
       extrusionTextureDrawable(context, extrusionTexturePrimitives()) {
@@ -177,6 +160,8 @@ void Painter::render(RenderStyle& style, const FrameData& frame_, View& view) {
     frameHistory.record(frame.timePoint, state.getZoom(),
         frame.mapMode == MapMode::Continuous ? util::DEFAULT_TRANSITION_DURATION : Milliseconds(0));
 
+    // Marks all tile masks as stale so that unused masks can be deleted later on.
+    tileMaskRepository.mark();
 
     // - UPLOAD PASS -------------------------------------------------------------------------------
     // Uploads all required buffers and images before we do any actual rendering.
@@ -272,6 +257,9 @@ void Painter::render(RenderStyle& style, const FrameData& frame_, View& view) {
     // unnecessary bind(0)/bind(N) sequences.
     {
         MBGL_DEBUG_GROUP(context, "cleanup");
+
+        // Deletes all tile masks that were unused during this frame.
+        tileMaskRepository.sweep();
 
         context.activeTexture = 1;
         context.texture[1] = 0;

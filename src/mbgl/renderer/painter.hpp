@@ -9,6 +9,7 @@
 #include <mbgl/renderer/bucket.hpp>
 #include <mbgl/renderer/render_light.hpp>
 #include <mbgl/renderer/drawable.hpp>
+#include <mbgl/renderer/tile_mask_repository.hpp>
 
 #include <mbgl/gl/context.hpp>
 #include <mbgl/programs/debug_program.hpp>
@@ -168,7 +169,7 @@ public:
     std::unique_ptr<Programs> overdrawPrograms;
 #endif
 
-    const Drawable<gl::Triangles, RasterLayoutVertex, RasterAttributes> rasterDrawable;
+    TileMaskRepository tileMaskRepository;
     const Drawable<gl::Triangles, FillLayoutVertex, FillAttributes> fillDrawable;
     const Drawable<gl::LineStrip, DebugLayoutVertex, DebugAttributes> borderDrawable;
     const Drawable<gl::Triangles, ExtrusionTextureLayoutVertex, ExtrusionTextureAttributes> extrusionTextureDrawable;

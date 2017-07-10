@@ -199,6 +199,8 @@ set(MBGL_CORE_FILES
     src/mbgl/renderer/style_diff.cpp
     src/mbgl/renderer/style_diff.hpp
     src/mbgl/renderer/tile_mask.hpp
+    src/mbgl/renderer/tile_mask_repository.cpp
+    src/mbgl/renderer/tile_mask_repository.hpp
     src/mbgl/renderer/tile_parameters.hpp
     src/mbgl/renderer/tile_pyramid.cpp
     src/mbgl/renderer/tile_pyramid.hpp

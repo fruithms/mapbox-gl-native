@@ -33,7 +33,7 @@ void RasterBucket::render(Painter& painter,
                           const RenderLayer& layer,
                           const RenderTile& tile) {
     painter.renderRaster(parameters, *this, *layer.as<RenderRasterLayer>(), tile.matrix,
-                         painter.rasterDrawable);
+                         painter.tileMaskRepository.getDrawable(painter.context, tile.mask));
 }
 
 void RasterBucket::render(Painter& painter,

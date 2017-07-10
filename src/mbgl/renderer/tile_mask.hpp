@@ -6,6 +6,10 @@
 
 namespace mbgl {
 
+// A TileMask is a set of TileIDs that describe what part of a tile should be rendered. I.e. it
+// denotes the part of a tile that is covered by other/better tiles. If the entire tile should be
+// rendered, it contains the { 0, 0, 0 } tile. If it's empty, no part of the tile will be rendered.
+// TileMasks are typically generated with algorithm::updateTileMasks().
 using TileMask = std::set<CanonicalTileID>;
 
 } // namespace mbgl

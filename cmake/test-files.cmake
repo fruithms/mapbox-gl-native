@@ -45,6 +45,7 @@ set(MBGL_TEST_FILES
     # renderer
     test/renderer/group_by_layout.test.cpp
     test/renderer/image_manager.test.cpp
+    test/renderer/tile_mask_repository.test.cpp
 
     # sprite
     test/sprite/sprite_loader.test.cpp
