@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 #include <mbgl/util/optional.hpp>
 #include <mbgl/util/variant.hpp>
@@ -63,7 +64,7 @@ private:
     std::string name;
 };
 
-class Array;
+struct Array;
 
 using Type = variant<
     NullType,
@@ -76,10 +77,10 @@ using Type = variant<
     Typename,
     mapbox::util::recursive_wrapper<Array>>;
 
-class Array {
-public:
+struct Array {
     Array(Type itemType_) : itemType(itemType_) {}
     Array(Type itemType_, std::size_t N_) : itemType(itemType_), N(N_) {}
+    Array(Type itemType_, optional<std::size_t> N_) : itemType(itemType_), N(N_) {}
     std::string getName() const {
         if (N) {
             return "Array<" + toString(itemType) + ", " + std::to_string(*N) + ">";
@@ -89,14 +90,24 @@ public:
             return "Array<" + toString(itemType) + ">";
         }
     }
-
-private:
+    
     Type itemType;
-    optional<int> N;
+    optional<std::size_t> N;
 };
 
 template <class T>
 std::string toString(const T& t) { return t.match([&] (const auto& t) { return t.getName(); }); }
+
+struct TypenameContext {
+    std::unordered_map<std::string, Type> expected;
+    std::unordered_map<std::string, Type> actual;
+};
+
+bool isGeneric(const Type& t);
+Type resolveTypenamesIfPossible(const Type&, const std::unordered_map<std::string, Type>&);
+
+
+optional<std::string> matchType(const Type& expected, const Type& t, TypenameContext& context);
 
 
 } // namespace type

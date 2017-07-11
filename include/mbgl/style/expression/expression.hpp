@@ -31,46 +31,45 @@ struct EvaluationParameters {
 
 using EvaluationResult = variant<EvaluationError, Value>;
 
+struct CompileError {
+    std::string message;
+    std::string key;
+};
+
 class Expression {
 public:
     Expression(std::string key_, type::Type type_) : key(key_), type(type_) {}
-    virtual ~Expression() {}
+    virtual ~Expression() {};
     
-    virtual EvaluationResult evaluate(const EvaluationParameters&) const = 0;
+    virtual EvaluationResult evaluate(const EvaluationParameters& params) const = 0;
     
-    // Exposed for use with pure Feature objects (e.g. beyond the context of tiled map data).
-    EvaluationResult evaluate(float, const Feature&) const;
+    EvaluationResult evaluate(float z, const Feature& feature) const;
     
-    type::Type getType() const {
-        return type;
-    }
+    type::Type getType() const { return type; }
+    std::string getKey() const { return key; }
     
-    bool isFeatureConstant() {
-        return true;
-    }
-    
-    bool isZoomConstant() {
-        return true;
-    }
+    virtual bool isFeatureConstant() const { return true; }
+    virtual bool isZoomConstant() const { return true; }
     
 private:
     std::string key;
     type::Type type;
 };
 
-struct CompileError {
-    std::string message;
-    std::string key;
-};
+
 using ParseResult = variant<CompileError, std::unique_ptr<Expression>>;
 template <class V>
 ParseResult parseExpression(const V& value, const ParsingContext& context);
+
+using TypecheckResult = variant<std::vector<CompileError>, std::unique_ptr<Expression>>;
 
 using namespace mbgl::style::conversion;
 
 class LiteralExpression : public Expression {
 public:
-    LiteralExpression(std::string key, type::Type type, Value value_) : Expression(key, type), value(value_) {}
+    LiteralExpression(std::string key_, type::Type type_, Value value_) : Expression(key_, type_), value(value_) {}
+    
+    Value getValue() const { return value; }
 
     EvaluationResult evaluate(const EvaluationParameters&) const override {
         return value;
@@ -123,17 +122,24 @@ struct NArgs {
 
 class LambdaExpression : public Expression {
 public:
+    using Params = std::vector<variant<type::Type, NArgs>>;
     using Args = std::vector<std::unique_ptr<Expression>>;
 
-    LambdaExpression(std::string key,
+    LambdaExpression(std::string key_,
                     std::string name_,
                     Args args_,
-                    type::Type type) :
-        Expression(key, type),
+                    type::Type type_,
+                    std::vector<Params> overloads_) :
+        Expression(key_, type_),
         args(std::move(args_)),
+        overloads(overloads_),
         name(name_)
     {}
     
+    virtual std::unique_ptr<Expression> applyInferredType(const type::Type& type, Args args) const = 0;
+    
+    friend TypecheckResult typecheck(const type::Type& expected, const std::unique_ptr<Expression>& e);
+
     template <class Expr, class V>
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
         assert(isArray(value));
@@ -154,74 +160,61 @@ public:
 protected:
     Args args;
 private:
+    std::vector<Params> overloads;
     std::string name;
 };
 
-template <typename T, typename Rfunc>
-EvaluationResult evaluateBinaryOperator(const EvaluationParameters& params,
-                                            const LambdaExpression::Args& args,
-                                            optional<T> initial,
-                                            Rfunc reduce)
-{
-    optional<T> memo = initial;
-    for(const auto& arg : args) {
-        auto argValue = arg->evaluate(params);
-        if (argValue.is<EvaluationError>()) {
-            return argValue.get<EvaluationError>();
-        }
-        T value = argValue.get<Value>().get<T>();
-        if (!memo) memo = {value};
-        else memo = reduce(*memo, value);
-    }
-    return {*memo};
-}
-
-class PlusExpression : public LambdaExpression {
+template<class Expr>
+class LambdaBase : public LambdaExpression {
 public:
-    PlusExpression(std::string key, Args args) :
-        LambdaExpression(key, "+", std::move(args), type::Number)
+    LambdaBase(const std::string& key, Args args) :
+        LambdaExpression(key, Expr::name, std::move(args), Expr::type, Expr::signatures)
     {}
-    
-    EvaluationResult evaluate(const EvaluationParameters& params) const override {
-        return evaluateBinaryOperator<float>(params, args,
-            {}, [](float memo, float next) { return memo + next; });
+    LambdaBase(const std::string& key, const type::Type& type, Args args) :
+        LambdaExpression(key, Expr::name, std::move(args), type, Expr::signatures)
+    {}
+
+    std::unique_ptr<Expression> applyInferredType(const type::Type& type, Args args) const override {
+        return std::make_unique<Expr>(getKey(), type, std::move(args));
     }
 };
 
-class TimesExpression : public LambdaExpression {
+// Concrete expression definitions
+
+class PlusExpression : public LambdaBase<PlusExpression> {
 public:
-    TimesExpression(std::string key, Args args) :
-        LambdaExpression(key, "*", std::move(args), type::Number)
-    {}
-    
-    EvaluationResult evaluate(const EvaluationParameters& params) const override {
-        return evaluateBinaryOperator<float>(params, args,
-            {}, [](float memo, float next) { return memo * next; });
-    }
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
-class MinusExpression : public LambdaExpression {
+class TimesExpression : public LambdaBase<TimesExpression> {
 public:
-    MinusExpression(std::string key, Args args) :
-        LambdaExpression(key, "-", std::move(args), type::Number)
-    {}
-    
-    EvaluationResult evaluate(const EvaluationParameters& params) const override {
-        return evaluateBinaryOperator<float>(params, args,
-            {}, [](float memo, float next) { return memo - next; });
-    }
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
-class DivideExpression : public LambdaExpression {
+class MinusExpression : public LambdaBase<MinusExpression> {
 public:
-    DivideExpression(std::string key, Args args) :
-        LambdaExpression(key, "/", std::move(args), type::Number)
-    {}
-    
-    EvaluationResult evaluate(const EvaluationParameters& params) const override {
-        return evaluateBinaryOperator<float>(params, args,
-            {}, [](float memo, float next) { return memo / next; });
-    }
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class DivideExpression : public LambdaBase<DivideExpression> {
+public:
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
 

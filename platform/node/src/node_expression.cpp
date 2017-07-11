@@ -1,7 +1,8 @@
 #include "node_conversion.hpp"
 #include "node_expression.hpp"
 
-#include <mbgl/style/conversion/expression.hpp>
+#include <mbgl/style/expression/parse.hpp>
+#include <mbgl/style/expression/type_check.hpp>
 #include <mbgl/style/conversion/geojson.hpp>
 #include <mbgl/util/geojson.hpp>
 #include <nan.h>
@@ -39,16 +40,30 @@ void NodeExpression::Parse(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     auto expr = info[0];
 
     try {
+        std::vector<CompileError> errors;
         auto parsed = parseExpression(expr, ParsingContext());
         if (parsed.template is<std::unique_ptr<Expression>>()) {
-            auto nodeExpr = new NodeExpression(std::move(parsed.template get<std::unique_ptr<Expression>>()));
-            const int argc = 0;
-            v8::Local<v8::Value> argv[0] = {};
-            auto wrapped = Nan::NewInstance(cons, argc, argv).ToLocalChecked();
-            nodeExpr->Wrap(wrapped);
-            info.GetReturnValue().Set(wrapped);
+            const auto& e = parsed.template get<std::unique_ptr<Expression>>();
+            auto checked = typecheck(e->getType(), e);
+            if (checked.template is<std::unique_ptr<Expression>>()) {
+                auto nodeExpr = new NodeExpression(std::move(checked.template get<std::unique_ptr<Expression>>()));
+                const int argc = 0;
+                v8::Local<v8::Value> argv[0] = {};
+                auto wrapped = Nan::NewInstance(cons, argc, argv).ToLocalChecked();
+                nodeExpr->Wrap(wrapped);
+                info.GetReturnValue().Set(wrapped);
+                return;
+            } else {
+                const auto& typeErrors = checked.template get<std::vector<CompileError>>();
+                errors.insert(errors.end(), typeErrors.begin(), typeErrors.end());
+            }
         } else {
-            const auto& error = parsed.template get<CompileError>();
+            errors.emplace_back(parsed.template get<CompileError>());
+        }
+        
+        v8::Local<v8::Array> result = Nan::New<v8::Array>();
+        for (std::size_t i = 0; i < errors.size(); i++) {
+            const auto& error = errors[i];
             v8::Local<v8::Object> err = Nan::New<v8::Object>();
             Nan::Set(err,
                     Nan::New("key").ToLocalChecked(),
@@ -56,10 +71,9 @@ void NodeExpression::Parse(const Nan::FunctionCallbackInfo<v8::Value>& info) {
             Nan::Set(err,
                     Nan::New("error").ToLocalChecked(),
                     Nan::New(error.message.c_str()).ToLocalChecked());
-            v8::Local<v8::Array> result = Nan::New<v8::Array>();
-            Nan::Set(result, Nan::New(0), err);
-            info.GetReturnValue().Set(result);
+            Nan::Set(result, Nan::New((uint32_t)i), err);
         }
+        info.GetReturnValue().Set(result);
     } catch(std::exception &ex) {
         return Nan::ThrowError(ex.what());
     }
