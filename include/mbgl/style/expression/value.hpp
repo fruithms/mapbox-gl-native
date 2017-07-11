@@ -24,7 +24,12 @@ struct Value : ValueBase {
 
 constexpr NullValue Null = NullValue();
 
+Value convertValue(const mbgl::Value&);
 type::Type typeOf(const Value& value);
+
+template <typename T>
+std::string valueTypeToString();
+
 
 } // namespace expression
 } // namespace style

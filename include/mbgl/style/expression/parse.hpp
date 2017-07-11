@@ -63,11 +63,16 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
             };
             return LiteralExpression::parse(arrayMember(value, 1), ParsingContext(context, {1}, {"literal"}));
         }
-        
-        if (*op == "+") return LambdaExpression::parse<PlusExpression>(value, context);
-        if (*op == "-") return LambdaExpression::parse<MinusExpression>(value, context);
-        if (*op == "*") return LambdaExpression::parse<TimesExpression>(value, context);
-        if (*op == "/") return LambdaExpression::parse<DivideExpression>(value, context);
+
+        if (*op == "e") return MathConstant::e(context);
+        if (*op == "pi") return MathConstant::pi(context);
+        if (*op == "ln2") return MathConstant::ln2(context);
+        if (*op == "typeof") return LambdaExpression::parse<TypeOf>(value, context);
+        if (*op == "get") return LambdaExpression::parse<Get>(value, context);
+        if (*op == "+") return LambdaExpression::parse<Plus>(value, context);
+        if (*op == "-") return LambdaExpression::parse<Minus>(value, context);
+        if (*op == "*") return LambdaExpression::parse<Times>(value, context);
+        if (*op == "/") return LambdaExpression::parse<Divide>(value, context);
 
         
         return CompileError {

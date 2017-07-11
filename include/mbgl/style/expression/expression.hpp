@@ -43,6 +43,26 @@ public:
     
     virtual EvaluationResult evaluate(const EvaluationParameters& params) const = 0;
     
+    template <typename T>
+    variant<EvaluationError, T> evaluate(const EvaluationParameters& params) {
+        const auto& result = evaluate(params);
+        return result.match(
+            [&] (const EvaluationError& err) -> variant<EvaluationError, T> {
+                return err;
+            },
+            [&] (const Value& value) {
+                return value.match(
+                    [&] (const T& v) -> variant<EvaluationError, T> { return v; },
+                    [&] (const auto& v) -> variant<EvaluationError, T> {
+                        return EvaluationError {
+                            "Expected " + valueTypeToString<T>() + " but found " + toString(typeOf(v)) + " instead."
+                        };
+                    }
+                );
+            }
+        );
+    }
+    
     EvaluationResult evaluate(float z, const Feature& feature) const;
     
     type::Type getType() const { return type; }
@@ -105,11 +125,7 @@ private:
         
         optional<mbgl::Value> v = toValue(value);
         assert(v);
-        return v->match(
-            [&] (const std::string& s) -> Value { return s; },
-            [&] (bool b) -> Value { return b; },
-            [&] (auto f) -> Value { return *numericValue<float>(f); }
-        );
+        return convertValue(*v);
     }
 
     Value value;
@@ -135,6 +151,24 @@ public:
         overloads(overloads_),
         name(name_)
     {}
+    
+    std::string getName() const { return name; }
+    
+    virtual bool isFeatureConstant() const override {
+        bool isFC = true;
+        for (const auto& arg : args) {
+            isFC = isFC && arg->isFeatureConstant();
+        }
+        return isFC;
+    }
+    
+    virtual bool isZoomConstant() const override {
+        bool isZC = true;
+        for (const auto& arg : args) {
+            isZC = isZC && arg->isZoomConstant();
+        }
+        return isZC;
+    }
     
     virtual std::unique_ptr<Expression> applyInferredType(const type::Type& type, Args args) const = 0;
     
@@ -180,8 +214,35 @@ public:
 };
 
 // Concrete expression definitions
+class MathConstant : public LambdaExpression {
+public:
+    MathConstant(const std::string& key, const std::string& name, float value_) :
+        LambdaExpression(key, name, {}, type::Number, {{}}),
+        value(value_)
+    {}
+    
+    EvaluationResult evaluate(const EvaluationParameters&) const override { return value; }
+    
+    std::unique_ptr<Expression> applyInferredType(const type::Type&, Args) const override {
+        return std::make_unique<MathConstant>(getKey(), getName(), value);
+    }
+    
+    // TODO: declaring these constants like `static constexpr double E = 2.718...` caused
+    // a puzzling link error.
+    static std::unique_ptr<Expression> ln2(const ParsingContext& ctx) {
+        return std::make_unique<MathConstant>(ctx.key(), "ln2", 0.693147180559945309417);
+    }
+    static std::unique_ptr<Expression> e(const ParsingContext& ctx) {
+        return std::make_unique<MathConstant>(ctx.key(), "e", 2.71828182845904523536);
+    }
+    static std::unique_ptr<Expression> pi(const ParsingContext& ctx) {
+        return std::make_unique<MathConstant>(ctx.key(), "pi", 3.14159265358979323846);
+    }
+private:
+    float value;
+};
 
-class PlusExpression : public LambdaBase<PlusExpression> {
+class TypeOf : public LambdaBase<TypeOf> {
 public:
     using LambdaBase::LambdaBase;
     static const std::string name;
@@ -190,7 +251,17 @@ public:
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
-class TimesExpression : public LambdaBase<TimesExpression> {
+class Get : public LambdaBase<Get> {
+public:
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    bool isFeatureConstant() const override;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Plus : public LambdaBase<Plus> {
 public:
     using LambdaBase::LambdaBase;
     static const std::string name;
@@ -199,7 +270,7 @@ public:
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
-class MinusExpression : public LambdaBase<MinusExpression> {
+class Times : public LambdaBase<Times> {
 public:
     using LambdaBase::LambdaBase;
     static const std::string name;
@@ -208,7 +279,16 @@ public:
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
-class DivideExpression : public LambdaBase<DivideExpression> {
+class Minus : public LambdaBase<Minus> {
+public:
+    using LambdaBase::LambdaBase;
+    static const std::string name;
+    static const type::Type type;
+    static const std::vector<Params> signatures;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Divide : public LambdaBase<Divide> {
 public:
     using LambdaBase::LambdaBase;
     static const std::string name;
