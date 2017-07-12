@@ -18,7 +18,7 @@ TypecheckResult typecheck(const Type& expected, const std::unique_ptr<Expression
         if (resultMatchError) return std::vector<CompileError> {{ *resultMatchError, lambda->getKey() }};
         
         std::vector<CompileError> errors;
-        for (const auto& params : lambda->overloads) {
+        for (const auto& params : lambda->signatures) {
             errors.clear();
             // "Unroll" NArgs if present in the parameter list:
             // argCount = nargType.type.length * n + nonNargParameterCount

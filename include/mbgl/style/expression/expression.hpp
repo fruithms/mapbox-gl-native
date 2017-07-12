@@ -16,7 +16,6 @@ namespace mbgl {
 
 class GeometryTileFeature;
 
-
 namespace style {
 namespace expression {
 
@@ -145,10 +144,10 @@ public:
                     std::string name_,
                     Args args_,
                     type::Type type_,
-                    std::vector<Params> overloads_) :
+                    std::vector<Params> signatures_) :
         Expression(key_, type_),
         args(std::move(args_)),
-        overloads(overloads_),
+        signatures(signatures_),
         name(name_)
     {}
     
@@ -178,6 +177,7 @@ public:
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
         assert(isArray(value));
         auto length = arrayLength(value);
+        const std::string& name = *toString(arrayMember(value, 0));
         Args args;
         for(size_t i = 1; i < length; i++) {
             const auto& arg = arrayMember(value, i);
@@ -188,115 +188,30 @@ public:
                 return parsedArg.template get<CompileError>();
             }
         }
-        return std::make_unique<Expr>(ctx.key(), std::move(args));
+        return std::make_unique<Expr>(ctx.key(), name, std::move(args));
     }
     
 protected:
     Args args;
 private:
-    std::vector<Params> overloads;
+    std::vector<Params> signatures;
     std::string name;
 };
 
 template<class Expr>
 class LambdaBase : public LambdaExpression {
 public:
-    LambdaBase(const std::string& key, Args args) :
-        LambdaExpression(key, Expr::name, std::move(args), Expr::type, Expr::signatures)
+    LambdaBase(const std::string& key, const std::string& name, Args args) :
+        LambdaExpression(key, name, std::move(args), Expr::type(), Expr::signatures())
     {}
-    LambdaBase(const std::string& key, const type::Type& type, Args args) :
-        LambdaExpression(key, Expr::name, std::move(args), type, Expr::signatures)
+    LambdaBase(const std::string& key, const std::string& name, const type::Type& type, Args args) :
+        LambdaExpression(key, name, std::move(args), type, Expr::signatures())
     {}
 
     std::unique_ptr<Expression> applyInferredType(const type::Type& type, Args args) const override {
-        return std::make_unique<Expr>(getKey(), type, std::move(args));
+        return std::make_unique<Expr>(getKey(), getName(), type, std::move(args));
     }
 };
-
-// Concrete expression definitions
-class MathConstant : public LambdaExpression {
-public:
-    MathConstant(const std::string& key, const std::string& name, float value_) :
-        LambdaExpression(key, name, {}, type::Number, {{}}),
-        value(value_)
-    {}
-    
-    EvaluationResult evaluate(const EvaluationParameters&) const override { return value; }
-    
-    std::unique_ptr<Expression> applyInferredType(const type::Type&, Args) const override {
-        return std::make_unique<MathConstant>(getKey(), getName(), value);
-    }
-    
-    // TODO: declaring these constants like `static constexpr double E = 2.718...` caused
-    // a puzzling link error.
-    static std::unique_ptr<Expression> ln2(const ParsingContext& ctx) {
-        return std::make_unique<MathConstant>(ctx.key(), "ln2", 0.693147180559945309417);
-    }
-    static std::unique_ptr<Expression> e(const ParsingContext& ctx) {
-        return std::make_unique<MathConstant>(ctx.key(), "e", 2.71828182845904523536);
-    }
-    static std::unique_ptr<Expression> pi(const ParsingContext& ctx) {
-        return std::make_unique<MathConstant>(ctx.key(), "pi", 3.14159265358979323846);
-    }
-private:
-    float value;
-};
-
-class TypeOf : public LambdaBase<TypeOf> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
-class Get : public LambdaBase<Get> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    bool isFeatureConstant() const override;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
-class Plus : public LambdaBase<Plus> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
-class Times : public LambdaBase<Times> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
-class Minus : public LambdaBase<Minus> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
-class Divide : public LambdaBase<Divide> {
-public:
-    using LambdaBase::LambdaBase;
-    static const std::string name;
-    static const type::Type type;
-    static const std::vector<Params> signatures;
-    EvaluationResult evaluate(const EvaluationParameters& params) const override;
-};
-
 
 
 } // namespace expression

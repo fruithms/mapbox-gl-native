@@ -3,6 +3,7 @@
 #include <memory>
 #include <mbgl/style/expression/parsing_context.hpp>
 #include <mbgl/style/expression/expression.hpp>
+#include <mbgl/style/expression/definitions.hpp>
 #include <mbgl/style/conversion.hpp>
 
 namespace mbgl {
