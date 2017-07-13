@@ -44,6 +44,144 @@ public:
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
+// TODO: This doesn't work with CRTP. With:
+// `template <typename T> class Assertion : public LambdaBase<Assertion<T>>`,
+// there's an error referring to member 'args'.
+template <typename T>
+class Assertion : public LambdaExpression {
+public:
+    Assertion(const std::string& key, const std::string& name, Args args) :
+        LambdaExpression(key, name, std::move(args), Assertion::type(), Assertion::signatures())
+    {}
+    Assertion(const std::string& key, const std::string& name, const type::Type& type, Args args) :
+        LambdaExpression(key, name, std::move(args), type, Assertion::signatures())
+    {}
+
+    static type::Type type() { return valueTypeToExpressionType<T>(); }
+    static std::vector<LambdaExpression::Params> signatures() { return {{type::Value}}; };
+
+    std::unique_ptr<Expression> applyInferredType(const type::Type& type, Args args) const override {
+        return std::make_unique<Assertion>(getKey(), getName(), type, std::move(args));
+    }
+    
+    EvaluationResult evaluate(const EvaluationParameters& params) const override {
+        return args[0]->template evaluate<T>(params).match([&] (const auto& v) -> EvaluationResult { return v; });
+    };
+};
+
+class Array : public LambdaBase<Array> {
+public:
+    Array(const std::string& key, const std::string& name, type::Type type, Args args) :
+        LambdaBase(key, name, type, std::move(args))
+    {}
+    
+    static std::vector<Params> signatures() { return {{type::Value}}; }
+    
+    template <typename V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        assert(isArray(value));
+        auto length = arrayLength(value);
+        if (length < 2) return CompileError { "Expected at least one argument to \"array\"", ctx.key() };
+        if (length > 4) return CompileError {
+            "Expected one, two, or three arguments to \"array\", but found " + std::to_string(length - 1) + " instead.",
+            ctx.key()
+        };
+        
+        const std::string& name = *toString(arrayMember(value, 0));
+        
+        auto arg = parseExpression(arrayMember(value, 1), ParsingContext(ctx, {1}, {"array"}));
+        if (arg.template is<CompileError>()) return arg.template get<CompileError>();
+        Args args;
+        args.push_back(std::move(arg.template get<std::unique_ptr<Expression>>()));
+        
+        // parse the optional item type and length arguments
+        optional<type::Type> itemType;
+        optional<size_t> N;
+        if (length > 2) {
+            const auto& itemTypeName = toString(arrayMember(value, 2));
+            if (itemTypeName && *itemTypeName == "string") {
+                itemType = {type::String};
+            } else if (itemTypeName && *itemTypeName == "number") {
+                itemType = {type::String};
+            } else if (itemTypeName && *itemTypeName == "boolean") {
+                itemType = {type::String};
+            } else {
+                return CompileError {
+                    "The item type argument to \"array\" must be one of ${Object.keys(types).join(', ')}",
+                    ctx.key(2)
+                };
+            }
+        }
+        if (length > 3) {
+            const auto& arrayLength = toNumber(arrayMember(value, 3));
+            if (!arrayLength) return CompileError {
+                "The length argument to \"array\" must be a number literal.",
+                ctx.key(3)
+            };
+            N = static_cast<size_t>(*arrayLength);
+        }
+        return std::make_unique<Array>(ctx.key(), name, type::Array(type::Value), std::move(args));
+    }
+    
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class ToString : public LambdaBase<ToString> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::String; };
+    static std::vector<Params> signatures() { return {{ type::Value }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class ToNumber : public LambdaBase<ToNumber> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Number; };
+    static std::vector<Params> signatures() { return {{ type::Value }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class ToBoolean : public LambdaBase<ToBoolean> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Boolean; };
+    static std::vector<Params> signatures() { return {{ type::Value }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class ToRGBA : public LambdaBase<ToRGBA> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Array(type::Number, 4); };
+    static std::vector<Params> signatures() { return {{ type::Color }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class ParseColor : public LambdaBase<ParseColor> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Color; };
+    static std::vector<Params> signatures() { return {{ type::String }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class RGB : public LambdaBase<RGB> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Color; };
+    static std::vector<Params> signatures() { return {{ type::Number, type::Number, type::Number }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class RGBA : public LambdaBase<RGBA> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Color; };
+    static std::vector<Params> signatures() { return {{ type::Number, type::Number, type::Number, type::Number }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
 class Get : public LambdaBase<Get> {
 public:
     using LambdaBase::LambdaBase;
@@ -53,6 +191,67 @@ public:
     };
     bool isFeatureConstant() const override;
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Has : public LambdaBase<Has> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Boolean; };
+    static std::vector<Params> signatures() {
+        return {{type::String, NArgs { {type::Object}, 1 }}};
+    };
+    bool isFeatureConstant() const override;
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class At : public LambdaBase<At> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Typename("T"); };
+    static std::vector<Params> signatures() {
+        return {{type::Number, type::Array(type::Typename("T"))}};
+    };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Length : public LambdaBase<Length> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Number; };
+    static std::vector<Params> signatures() {
+        return {
+            {type::Array(type::Typename("T"))},
+            {type::String}
+        };
+    };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Properties : public LambdaBase<Properties> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Object; };
+    static std::vector<Params> signatures() { return {{}}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+    bool isFeatureConstant() const override;
+};
+
+class Id : public LambdaBase<Id> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Value; };
+    static std::vector<Params> signatures() { return {{}}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+    bool isFeatureConstant() const override;
+};
+
+class GeometryType : public LambdaBase<GeometryType> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::String; };
+    static std::vector<Params> signatures() { return {{}}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+    bool isFeatureConstant() const override;
 };
 
 class Plus : public LambdaBase<Plus> {
@@ -94,7 +293,6 @@ public:
     };
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
-
 
 } // namespace expression
 } // namespace style

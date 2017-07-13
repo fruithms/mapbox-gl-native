@@ -42,6 +42,10 @@ public:
     
     virtual EvaluationResult evaluate(const EvaluationParameters& params) const = 0;
     
+    /*
+      Evaluate this expression to a particular value type T. (See expression/value.hpp for
+      possible types T.)
+    */
     template <typename T>
     variant<EvaluationError, T> evaluate(const EvaluationParameters& params) {
         const auto& result = evaluate(params);
@@ -54,7 +58,8 @@ public:
                     [&] (const T& v) -> variant<EvaluationError, T> { return v; },
                     [&] (const auto& v) -> variant<EvaluationError, T> {
                         return EvaluationError {
-                            "Expected " + valueTypeToString<T>() + " but found " + toString(typeOf(v)) + " instead."
+                            "Expected value to be of type " + toString(valueTypeToExpressionType<T>()) +
+                            ", but found " + toString(typeOf(v)) + " instead."
                         };
                     }
                 );

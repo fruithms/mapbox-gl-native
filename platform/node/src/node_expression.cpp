@@ -118,7 +118,7 @@ struct ToValue {
     }
     
     v8::Local<v8::Value> operator()(const mbgl::Color& color) {
-        return operator()(color.stringify().c_str());
+        return operator()(std::vector<Value> { color.r, color.g, color.b, color.a });
     }
 
     v8::Local<v8::Value> operator()(const std::unordered_map<std::string, Value>& map) {

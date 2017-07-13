@@ -66,16 +66,42 @@ type::Type typeOf(const Value& value) {
     );
 }
 
-template <> std::string valueTypeToString<Value>() { return "Value"; }
-template <> std::string valueTypeToString<NullValue>() { return "Null"; }
-template <> std::string valueTypeToString<bool>() { return "Boolean"; }
-template <> std::string valueTypeToString<float>() { return "Number"; }
-template <> std::string valueTypeToString<std::string>() { return "String"; }
-template <> std::string valueTypeToString<mbgl::Color>() { return "Color"; }
-template <> std::string valueTypeToString<std::unordered_map<std::string, Value>>() { return "Object"; }
-template <> std::string valueTypeToString<std::array<float, 2>>() { return "Array<Number, 2>"; }
-template <> std::string valueTypeToString<std::array<float, 4>>() { return "Array<Number, 4>"; }
-template <> std::string valueTypeToString<std::vector<Value>>() { return "Array"; }
+std::string stringify(const Value& value) {
+    return value.match(
+        [&] (const NullValue&) { return std::string("null"); },
+        [&] (bool b) { return std::string(b ? "true" : "false"); },
+        [&] (float f) { return ceilf(f) == f ? std::to_string((int)f) : std::to_string(f); },
+        [&] (const std::string& s) { return "\"" + s + "\""; },
+        [&] (const mbgl::Color& c) { return c.stringify(); },
+        [&] (const std::vector<Value>& arr) {
+            std::string result = "[";
+            for(const auto& item : arr) {
+                if (result.size() > 1) result += ",";
+                result += stringify(item);
+            }
+            return result + "]";
+        },
+        [&] (const std::unordered_map<std::string, Value>& obj) {
+            std::string result = "{";
+            for(const auto& entry : obj) {
+                if (result.size() > 1) result += ",";
+                result += stringify(entry.first) + ":" + stringify(entry.second);
+            }
+            return result + "}";
+        }
+    );
+}
+
+template <> type::Type valueTypeToExpressionType<Value>() { return type::Value; }
+template <> type::Type valueTypeToExpressionType<NullValue>() { return type::Null; }
+template <> type::Type valueTypeToExpressionType<bool>() { return type::Boolean; }
+template <> type::Type valueTypeToExpressionType<float>() { return type::Number; }
+template <> type::Type valueTypeToExpressionType<std::string>() { return type::String; }
+template <> type::Type valueTypeToExpressionType<mbgl::Color>() { return type::Color; }
+template <> type::Type valueTypeToExpressionType<std::unordered_map<std::string, Value>>() { return type::Object; }
+template <> type::Type valueTypeToExpressionType<std::array<float, 2>>() { return type::Array(type::Number, 2); }
+template <> type::Type valueTypeToExpressionType<std::array<float, 4>>() { return type::Array(type::Number, 4); }
+template <> type::Type valueTypeToExpressionType<std::vector<Value>>() { return type::Array(type::Value); }
 
 } // namespace expression
 } // namespace style

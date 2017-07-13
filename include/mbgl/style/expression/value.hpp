@@ -5,6 +5,7 @@
 #include <mbgl/util/feature.hpp>
 #include <mbgl/style/expression/type.hpp>
 
+
 namespace mbgl {
 namespace style {
 namespace expression {
@@ -13,6 +14,7 @@ struct Value;
 using ValueBase = variant<
     NullValue,
     bool,
+    // TODO: should we break up the numeric types here like mbgl::Value does?
     float,
     std::string,
     mbgl::Color,
@@ -26,10 +28,15 @@ constexpr NullValue Null = NullValue();
 
 Value convertValue(const mbgl::Value&);
 type::Type typeOf(const Value& value);
+std::string stringify(const Value& value);
 
+/*
+  Returns a Type object representing the expression type that corresponds to
+  the value type T.  (Specialized for primitives and specific array types in
+  the .cpp.)
+*/
 template <typename T>
-std::string valueTypeToString();
-
+type::Type valueTypeToExpressionType();
 
 } // namespace expression
 } // namespace style
