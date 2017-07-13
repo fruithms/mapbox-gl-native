@@ -98,16 +98,16 @@ struct Array {
 template <class T>
 std::string toString(const T& t) { return t.match([&] (const auto& t) { return t.getName(); }); }
 
-struct TypenameContext {
-    std::unordered_map<std::string, Type> expected;
-    std::unordered_map<std::string, Type> actual;
-};
-
 bool isGeneric(const Type& t);
 Type resolveTypenamesIfPossible(const Type&, const std::unordered_map<std::string, Type>&);
 
+optional<std::string> matchType(const Type& expected, const Type& t);
 
-optional<std::string> matchType(const Type& expected, const Type& t, TypenameContext& context);
+enum TypenameScope { expected, actual };
+optional<std::string> matchType(const Type& expected,
+                                const Type& t,
+                                std::unordered_map<std::string, Type>& typenames,
+                                TypenameScope scope = TypenameScope::expected);
 
 
 } // namespace type

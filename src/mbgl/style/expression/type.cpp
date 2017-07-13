@@ -34,23 +34,38 @@ inline std::string errorMessage(const Type& expected, const Type& t) {
     return {"Expected " + toString(expected) + " but found " + toString(t) + " instead."};
 }
 
-optional<std::string> matchType(const Type& expected, const Type& t, TypenameContext& context) {
+optional<std::string> matchType(const Type& expected, const Type& t) {
+    // TODO this is wasteful; just make typenames param optional.
+    std::unordered_map<std::string, Type> typenames;
+    return matchType(expected, t, typenames);
+}
+
+optional<std::string> matchType(const Type& expected,
+                                const Type& t,
+                                std::unordered_map<std::string, Type>& typenames,
+                                TypenameScope scope) {
     if (expected.is<Typename>()) {
         const auto& name = expected.get<Typename>().getName();
         if (
+            scope == TypenameScope::expected &&
             !isGeneric(t) &&
             !t.is<NullType>() &&
-            context.expected.find(name) == context.expected.end()
+            typenames.find(name) == typenames.end()
         ) {
-            context.expected.emplace(name, t);
+            typenames.emplace(name, t);
         }
         return {};
     }
     
-    if (t.is<Typename>() && isGeneric(expected)) {
+    if (t.is<Typename>()) {
         const auto& name = t.get<Typename>().getName();
-        if (context.actual.find(name) != context.actual.end()) {
-            context.actual.emplace(name, expected);
+        if (
+            scope == TypenameScope::actual &&
+            !isGeneric(expected) &&
+            !expected.is<NullType>() &&
+            typenames.find(name) == typenames.end()
+        ) {
+            typenames.emplace(name, expected);
         }
         return {};
     }
@@ -61,7 +76,7 @@ optional<std::string> matchType(const Type& expected, const Type& t, TypenameCon
         [&] (const Array& expectedArray) -> optional<std::string> {
             if (!t.is<Array>()) { return {errorMessage(expected, t)}; }
             const auto& tArr = t.get<Array>();
-            const auto err = matchType(expectedArray.itemType, tArr.itemType, context);
+            const auto err = matchType(expectedArray.itemType, tArr.itemType, typenames);
             if (err) return { errorMessage(expected, t) + " (" + (*err) + ")" };
             if (expectedArray.N && expectedArray.N != tArr.N) return { errorMessage(expected, t) };
             return {};
@@ -79,11 +94,10 @@ optional<std::string> matchType(const Type& expected, const Type& t, TypenameCon
             };
             
             for (const auto& member : members) {
-                TypenameContext memberContext;
-                const auto err = matchType(member, t, memberContext);
+                std::unordered_map<std::string, Type> memberTypenames;
+                const auto err = matchType(member, t, memberTypenames, scope);
                 if (!err) {
-                    context.expected.insert(memberContext.expected.begin(), memberContext.expected.end());
-                    context.actual.insert(memberContext.actual.begin(), memberContext.actual.end());
+                    typenames.insert(memberTypenames.begin(), memberTypenames.end());
                     return {};
                 }
             }

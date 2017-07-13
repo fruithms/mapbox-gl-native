@@ -8,17 +8,20 @@ using namespace mbgl::style::expression::type;
 
 TypecheckResult typecheck(const Type& expected, const std::unique_ptr<Expression>& e) {
     if (LiteralExpression* literal = dynamic_cast<LiteralExpression*>(e.get())) {
-        TypenameContext context;
-        const auto& error = matchType(expected, literal->getType(), context);
+        const auto& error = matchType(expected, literal->getType());
         if (error) return std::vector<CompileError> {{ *error, literal->getKey() }};
         return std::make_unique<LiteralExpression>(literal->getKey(), literal->getType(), literal->getValue());
     } else if (LambdaExpression* lambda = dynamic_cast<LambdaExpression*>(e.get())) {
-        TypenameContext context;
-        const auto& resultMatchError = matchType(expected, lambda->getType(), context);
+        // Check if the expected type matches the expression's output type;
+        // If expression's output type is generic and the expected type is concrete,
+        // pick up a typename binding
+        std::unordered_map<std::string, Type> initialTypenames;
+        const auto& resultMatchError = matchType(expected, lambda->getType(), initialTypenames, TypenameScope::actual);
         if (resultMatchError) return std::vector<CompileError> {{ *resultMatchError, lambda->getKey() }};
         
         std::vector<CompileError> errors;
         for (const auto& params : lambda->signatures) {
+            std::unordered_map<std::string, Type> typenames(initialTypenames);
             errors.clear();
             // "Unroll" NArgs if present in the parameter list:
             // argCount = nargType.type.length * n + nonNargParameterCount
@@ -65,16 +68,16 @@ TypecheckResult typecheck(const Type& expected, const std::unique_ptr<Expression
 //                    }
 
                 const auto& error = matchType(
-                    resolveTypenamesIfPossible(param, context.expected),
+                    resolveTypenamesIfPossible(param, typenames),
                     arg->getType(),
-                    context
+                    typenames
                 );
                 if (error) {
                     errors.emplace_back(CompileError{ *error, arg->getKey() });
                 }
             }
             
-            const auto& resultType = resolveTypenamesIfPossible(expected, context.expected);
+            const auto& resultType = resolveTypenamesIfPossible(expected, typenames);
 
             if (isGeneric(resultType)) {
                 errors.emplace_back(CompileError {
@@ -91,7 +94,7 @@ TypecheckResult typecheck(const Type& expected, const std::unique_ptr<Expression
             std::vector<std::unique_ptr<Expression>> checkedArgs;
             for (std::size_t i = 0; i < expandedParams.size(); i++) {
                 const auto& t = expandedParams.at(i);
-                const auto& expectedArgType = resolveTypenamesIfPossible(t, context.expected);
+                const auto& expectedArgType = resolveTypenamesIfPossible(t, typenames);
                 auto checked = typecheck(expectedArgType, lambda->args.at(i));
                 if (checked.is<std::vector<CompileError>>()) {
                     const auto& errs = checked.get<std::vector<CompileError>>();
