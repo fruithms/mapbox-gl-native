@@ -133,6 +133,17 @@ EvaluationResult Array::evaluate(const EvaluationParameters& params) const  {
     };
 }
 
+EvaluationResult Coalesce::evaluate(const EvaluationParameters& params) const {
+    for (auto it = args.begin(); it != args.end(); it++) {
+        const auto& arg = *it;
+        const auto& result = arg->evaluate(params);
+        if (std::next(it) == args.end()) return result;
+        if (!result || *result == Null) continue;
+        return *result;
+    }
+    return Null;
+}
+
 EvaluationResult ToString::evaluate(const EvaluationParameters& params) const {
     const auto& result = args[0]->evaluate(params);
     if (!result) return result.error();

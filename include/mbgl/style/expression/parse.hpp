@@ -93,6 +93,7 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
         if (*op == "/") return LambdaExpression::parse<Divide>(value, context);
         if (*op == "^") return LambdaExpression::parse<Power>(value, context);
         if (*op == "%") return LambdaExpression::parse<Mod>(value, context);
+        if (*op == "coalesce") return LambdaExpression::parse<Coalesce>(value, context);
 
         
         return CompileError {

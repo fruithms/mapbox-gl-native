@@ -128,6 +128,84 @@ public:
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
 
+class Coalesce : public LambdaBase<Coalesce> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Typename("T"); };
+    static std::vector<Params> signatures() { return {{ NArgs { {type::Typename("T")}, {} } }}; };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Match : public LambdaBase<Match> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Typename("T"); };
+    static std::vector<Params> signatures() {
+        return {{
+            type::Typename("T"),
+            NArgs { {type::Array(type::Typename("U")), type::Typename("T")}, {} },
+            type::Typename("T")
+        }};
+    };
+    
+    template <typename V>
+    static ParseResult parse(const V& value, const ParsingContext& ctx) {
+        assert(isArray(value));
+        auto length = arrayLength(value);
+        if (length < 3) {
+            return CompileError {
+                "Expected at least 2 arguments, but found only " + std::to_string(length - 1) + ".",
+                ctx.key()
+            };
+        }
+        
+        Args args;
+        
+        for (size_t i = 2; i < length; i++) {
+            const auto& arg = arrayMember(value, i);
+            if (i % 2 == 0) {
+                // Match inputs are provided as either a literal value or a
+                // raw JSON array of string / number / boolean values.
+                if (isArray(arg)) {
+                    auto groupLength = arrayLength(arg);
+                    if (groupLength == 0) return CompileError {
+                        "Expected at least one input value",
+                        ctx.key(i)
+                    };
+                    for (size_t j = 0; j < groupLength; j++) {
+                        const auto& input = arrayMember(arg, j);
+                        if (isArray(input) || isObject(input)) return CompileError {
+                            "Match inputs must be literal primitive values or arrays of literal primitive values.",
+                            ctx.key(i)
+                        };
+                    }
+                }
+            } else {
+                const auto& parsed = parseExpression(arg, ParsingContext(ctx, {i}, {"match"}));
+                if (parsed.template is<CompileError>()) {
+                    return parsed.template get<CompileError>();
+                }
+                args.push_back(std::move(parsed.template get<std::unique_ptr<Expression>>()));
+            }
+        }
+    }
+    
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Curve : public LambdaBase<Curve> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::Type type() { return type::Typename("T"); };
+    static std::vector<Params> signatures() {
+        return {{
+            type::Number,
+            NArgs { {type::Number, type::Typename("T")}, {} }
+        }};
+    };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
 class ToString : public LambdaBase<ToString> {
 public:
     using LambdaBase::LambdaBase;
