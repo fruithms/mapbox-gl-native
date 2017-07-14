@@ -91,7 +91,7 @@ using namespace mbgl::style::conversion;
 
 class LiteralExpression : public Expression {
 public:
-    LiteralExpression(std::string key_, type::Type type_, Value value_) : Expression(key_, type_), value(value_) {}
+    LiteralExpression(std::string key_, Value value_) : Expression(key_, typeOf(value_)), value(value_) {}
     
     Value getValue() const { return value; }
 
@@ -102,8 +102,7 @@ public:
     template <class V>
     static ParseResult parse(const V& value, const ParsingContext& ctx) {
         const Value& parsedValue = parseValue(value);
-        const type::Type& type = typeOf(parsedValue);
-        return std::make_unique<LiteralExpression>(ctx.key(), type, parsedValue);
+        return std::make_unique<LiteralExpression>(ctx.key(), parsedValue);
     }
     
 private:

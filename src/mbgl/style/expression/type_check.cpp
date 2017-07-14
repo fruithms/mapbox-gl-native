@@ -10,7 +10,7 @@ TypecheckResult typecheck(const Type& expected, const std::unique_ptr<Expression
     if (LiteralExpression* literal = dynamic_cast<LiteralExpression*>(e.get())) {
         const auto& error = matchType(expected, literal->getType());
         if (error) return std::vector<CompileError> {{ *error, literal->getKey() }};
-        return std::make_unique<LiteralExpression>(literal->getKey(), literal->getType(), literal->getValue());
+        return std::make_unique<LiteralExpression>(literal->getKey(), literal->getValue());
     } else if (LambdaExpression* lambda = dynamic_cast<LambdaExpression*>(e.get())) {
         // Check if the expected type matches the expression's output type;
         // If expression's output type is generic and the expected type is concrete,
