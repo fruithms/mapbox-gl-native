@@ -28,7 +28,44 @@ struct EvaluationParameters {
     const GeometryTileFeature& feature;
 };
 
-using EvaluationResult = variant<EvaluationError, Value>;
+template<typename T>
+class Result : private variant<EvaluationError, T> {
+public:
+    using variant<EvaluationError, T>::variant;
+    
+    explicit operator bool () const {
+        return this->template is<T>();
+    }
+    
+    // optional does some type trait magic for this one, so this might
+    // be problematic as is.
+    const T* operator->() const {
+        assert(this->template is<T>());
+        return std::addressof(this->template get<T>());
+    }
+    
+    T* operator->() {
+        assert(this->template is<T>());
+        return std::addressof(this->template get<T>());
+    }
+    
+    T& operator*() {
+        assert(this->template is<T>());
+        return this->template get<T>();
+    }
+    
+    const T& operator*() const {
+        assert(this->template is<T>());
+        return this->template get<T>();
+    }
+    
+    const EvaluationError& error() const {
+        assert(this->template is<EvaluationError>());
+        return this->template get<EvaluationError>();
+    }
+};
+
+using EvaluationResult = Result<Value>;
 
 struct CompileError {
     std::string message;
@@ -47,22 +84,16 @@ public:
       possible types T.)
     */
     template <typename T>
-    variant<EvaluationError, T> evaluate(const EvaluationParameters& params) {
+    Result<T> evaluate(const EvaluationParameters& params) {
         const auto& result = evaluate(params);
-        return result.match(
-            [&] (const EvaluationError& err) -> variant<EvaluationError, T> {
-                return err;
-            },
-            [&] (const Value& value) {
-                return value.match(
-                    [&] (const T& v) -> variant<EvaluationError, T> { return v; },
-                    [&] (const auto& v) -> variant<EvaluationError, T> {
-                        return EvaluationError {
-                            "Expected value to be of type " + toString(valueTypeToExpressionType<T>()) +
-                            ", but found " + toString(typeOf(v)) + " instead."
-                        };
-                    }
-                );
+        if (!result) { return result.error(); }
+        return result->match(
+            [&] (const T& v) -> variant<EvaluationError, T> { return v; },
+            [&] (const auto& v) -> variant<EvaluationError, T> {
+                return EvaluationError {
+                    "Expected value to be of type " + toString(valueTypeToExpressionType<T>()) +
+                    ", but found " + toString(typeOf(v)) + " instead."
+                };
             }
         );
     }
@@ -74,6 +105,9 @@ public:
     
     virtual bool isFeatureConstant() const { return true; }
     virtual bool isZoomConstant() const { return true; }
+    
+protected:
+    void setType(type::Type newType) { type = newType; }
     
 private:
     std::string key;

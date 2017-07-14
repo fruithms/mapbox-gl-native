@@ -91,6 +91,8 @@ ParseResult parseExpression(const V& value, const ParsingContext& context)
         if (*op == "-") return LambdaExpression::parse<Minus>(value, context);
         if (*op == "*") return LambdaExpression::parse<Times>(value, context);
         if (*op == "/") return LambdaExpression::parse<Divide>(value, context);
+        if (*op == "^") return LambdaExpression::parse<Power>(value, context);
+        if (*op == "%") return LambdaExpression::parse<Mod>(value, context);
 
         
         return CompileError {

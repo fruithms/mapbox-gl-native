@@ -5,39 +5,17 @@ namespace mbgl {
 namespace style {
 namespace expression {
 
-template <typename T, typename Rfunc>
-EvaluationResult evaluateBinaryOperator(const EvaluationParameters& params,
-                                            const LambdaExpression::Args& args,
-                                            optional<T> initial,
-                                            Rfunc reduce)
-{
-    optional<T> memo = initial;
-    for(const auto& arg : args) {
-        auto argValue = arg->evaluate(params);
-        if (argValue.is<EvaluationError>()) {
-            return argValue.get<EvaluationError>();
-        }
-        T value = argValue.get<Value>().get<T>();
-        if (!memo) memo = {value};
-        else memo = reduce(*memo, value);
-    }
-    return {*memo};
-}
 
-template<typename EvalFunc>
-EvaluationResult evaluateFromArgs(const EvaluationParameters& params,
-                                 const LambdaExpression::Args& args,
-                                 EvalFunc evaluate)
+Result<std::vector<Value>> evaluateArgs(const EvaluationParameters& params,
+                                        const LambdaExpression::Args& args)
 {
     std::vector<Value> argValues;
     for(const auto& arg : args) {
         auto argValue = arg->evaluate(params);
-        if (argValue.is<EvaluationError>()) {
-            return argValue.get<EvaluationError>();
-        }
-        argValues.emplace_back(argValue.get<Value>());
+        if (!argValue) return argValue.error();
+        argValues.emplace_back(*argValue);
     }
-    return evaluate(argValues);
+    return argValues;
 }
 
 template<typename T, typename EvalFunc>
@@ -46,10 +24,8 @@ EvaluationResult evaluateFromArgs(const EvaluationParameters& params,
                                  EvalFunc evaluate)
 {
     const auto& a0value = a0->evaluate<T>(params);
-    if (a0value.template is<EvaluationError>()) {
-        return a0value.template get<EvaluationError>();
-    }
-    return evaluate(a0value.template get<T>());
+    if (!a0value) return a0value.error();
+    return evaluate(*a0value);
 }
 
 // TODO: get this working to replace all the overloads below
@@ -83,14 +59,10 @@ EvaluationResult evaluateFromArgs(const EvaluationParameters& params,
                                  EvalFunc evaluate)
 {
     const auto& a0value = a0->evaluate<T>(params);
-    if (a0value.template is<EvaluationError>()) {
-        return a0value.template get<EvaluationError>();
-    }
+    if (!a0value) return a0value.error();
     const auto& a1value = a1->evaluate<U>(params);
-    if (a1value.template is<EvaluationError>()) {
-        return a1value.template get<EvaluationError>();
-    }
-    return evaluate(a0value.template get<T>(), a1value.template get<U>());
+    if (!a1value) return a1value.error();
+    return evaluate(*a0value, *a1value);
 }
 
 template<typename T0, typename T1, typename T2, typename EvalFunc>
@@ -101,22 +73,12 @@ EvaluationResult evaluateFromArgs(const EvaluationParameters& params,
                                  EvalFunc evaluate)
 {
     const auto& a0value = a0->evaluate<T0>(params);
-    if (a0value.template is<EvaluationError>()) {
-        return a0value.template get<EvaluationError>();
-    }
+    if (!a0value) return a0value.error();
     const auto& a1value = a1->evaluate<T1>(params);
-    if (a1value.template is<EvaluationError>()) {
-        return a1value.template get<EvaluationError>();
-    }
+    if (!a1value) return a1value.error();
     const auto& a2value = a2->evaluate<T2>(params);
-    if (a2value.template is<EvaluationError>()) {
-        return a2value.template get<EvaluationError>();
-    }
-    return evaluate(
-        a0value.template get<T0>(),
-        a1value.template get<T1>(),
-        a2value.template get<T2>()
-    );
+    if (!a2value) return a2value.error();
+    return evaluate(*a0value, *a1value, *a2value);
 }
 
 template<typename T0, typename T1, typename T2, typename T3, typename EvalFunc>
@@ -128,120 +90,90 @@ EvaluationResult evaluateFromArgs(const EvaluationParameters& params,
                                  EvalFunc evaluate)
 {
     const auto& a0value = a0->evaluate<T0>(params);
-    if (a0value.template is<EvaluationError>()) {
-        return a0value.template get<EvaluationError>();
-    }
+    if (!a0value) return a0value.error();
     const auto& a1value = a1->evaluate<T1>(params);
-    if (a1value.template is<EvaluationError>()) {
-        return a1value.template get<EvaluationError>();
-    }
+    if (!a1value) return a1value.error();
     const auto& a2value = a2->evaluate<T2>(params);
-    if (a2value.template is<EvaluationError>()) {
-        return a2value.template get<EvaluationError>();
-    }
+    if (!a2value) return a2value.error();
     const auto& a3value = a3->evaluate<T3>(params);
-    if (a3value.template is<EvaluationError>()) {
-        return a3value.template get<EvaluationError>();
-    }
-    return evaluate(
-        a0value.template get<T0>(),
-        a1value.template get<T1>(),
-        a2value.template get<T2>(),
-        a3value.template get<T3>()
-    );
+    if (!a3value) return a3value.error();
+    return evaluate(*a0value, *a1value, *a2value, *a3value);
 }
 
 
 EvaluationResult TypeOf::evaluate(const EvaluationParameters& params) const  {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&](const Value& v) -> EvaluationResult { return toString(typeOf(v)); },
-        [&](const EvaluationError& err) -> EvaluationResult { return err; }
-    );
+    const auto& result = args[0]->evaluate(params);
+    if (!result) return result.error();
+    return toString(typeOf(*result));
 }
 
 EvaluationResult Array::evaluate(const EvaluationParameters& params) const  {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&](const Value& v) -> EvaluationResult {
-            const auto& expected = getType().get<type::Array>();
-            const auto& actual = typeOf(v);
-            if (actual.is<type::Array>()) {
-                const auto& arrayType = actual.get<type::Array>();
-                bool match = (!expected.N || expected.N == arrayType.N);
-                if (expected.itemType.is<type::ValueType>()) {
-                    match = match && (arrayType.itemType.is<type::StringType>() ||
-                        arrayType.itemType.is<type::NumberType>() ||
-                        arrayType.itemType.is<type::BooleanType>());
-                } else {
-                    match = match && (toString(expected.itemType) == toString(arrayType.itemType));
-                }
-                
-                if (match) return EvaluationResult(v);
-            }
-            
-            return EvaluationError {
-                "Expected value to be of type " + toString(getType()) +
-                ", but found " + toString(actual) + " instead."
-            };
-        },
-        [&](const EvaluationError& err) -> EvaluationResult { return err; }
-    );
+    const auto& result = args[0]->evaluate(params);
+    if (!result) { return result.error(); }
+    const Value& v = *result;
+    const auto& expected = getType().get<type::Array>();
+    const auto& actual = typeOf(v);
+    if (actual.is<type::Array>()) {
+        const auto& arrayType = actual.get<type::Array>();
+        bool match = (!expected.N || expected.N == arrayType.N);
+        if (expected.itemType.is<type::ValueType>()) {
+            match = match && (arrayType.itemType.is<type::StringType>() ||
+                arrayType.itemType.is<type::NumberType>() ||
+                arrayType.itemType.is<type::BooleanType>());
+        } else {
+            match = match && (toString(expected.itemType) == toString(arrayType.itemType));
+        }
+        
+        if (match) return EvaluationResult(v);
+    }
+    
+    return EvaluationError {
+        "Expected value to be of type " + toString(getType()) +
+        ", but found " + toString(actual) + " instead."
+    };
 }
 
 EvaluationResult ToString::evaluate(const EvaluationParameters& params) const {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&] (const Value& v) -> EvaluationResult {
-            return v.match(
-                [&] (const std::string& s) -> EvaluationResult { return s; },
-                [&] (float) -> EvaluationResult { return stringify(v); },
-                [&] (bool) -> EvaluationResult { return stringify(v); },
-                [&] (const NullValue&) -> EvaluationResult { return stringify(v); },
-                [&] (const auto& v) -> EvaluationResult {
-                    return EvaluationError {
-                        "Expected a primitive value in [\"string\", ...], but found " + toString(typeOf(v)) + " instead."
-                    };
-                }
-            );
-        },
-        [&] (const EvaluationError& err) -> EvaluationResult { return err; }
+    const auto& result = args[0]->evaluate(params);
+    if (!result) return result.error();
+    return result->match(
+        [&] (const std::string& s) -> EvaluationResult { return s; },
+        [&] (float v) -> EvaluationResult { return stringify(v); },
+        [&] (bool v) -> EvaluationResult { return stringify(v); },
+        [&] (const NullValue& v) -> EvaluationResult { return stringify(v); },
+        [&] (const auto& v) -> EvaluationResult {
+            return EvaluationError {
+                "Expected a primitive value in [\"string\", ...], but found " + toString(typeOf(v)) + " instead."
+            };
+        }
     );
 }
 
 EvaluationResult ToNumber::evaluate(const EvaluationParameters& params) const {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&] (const Value& v) -> EvaluationResult {
-            if (v.is<float>()) { return v.get<float>(); }
-            if (v.is<std::string>()) {
-                const std::string& s = v.get<std::string>();
-                try {
-                    return std::stof(s);
-                } catch(std::exception) {
-                }
-            }
-            return EvaluationError {
-                "Could not convert " + stringify(v) + " to number."
-            };
-        },
-        [&] (const EvaluationError& err) -> EvaluationResult { return err; }
-    );
+    const auto& result = args[0]->evaluate(params);
+    if (!result) return result.error();
+    if (result->is<float>()) { return result->get<float>(); }
+    if (result->is<std::string>()) {
+        const std::string& s = result->get<std::string>();
+        try {
+            return std::stof(s);
+        } catch(std::exception) {
+        }
+    }
+    return EvaluationError {
+        "Could not convert " + stringify(*result) + " to number."
+    };
 }
 
 EvaluationResult ToBoolean::evaluate(const EvaluationParameters& params) const {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&] (const Value& v) -> EvaluationResult {
-            return v.match(
-                [&] (float f) { return (bool)f; },
-                [&] (const std::string& s) { return s.length() > 0; },
-                [&] (bool b) { return b; },
-                [&] (const NullValue&) { return false; },
-                [&] (const auto&) { return true; }
-            );
-        },
-        [&] (const EvaluationError& err) -> EvaluationResult { return err; }
+    const auto& result = args[0]->evaluate(params);
+    if (!result) return result.error();
+    return result->match(
+        [&] (float f) { return (bool)f; },
+        [&] (const std::string& s) { return s.length() > 0; },
+        [&] (bool b) { return b; },
+        [&] (const NullValue&) { return false; },
+        [&] (const auto&) { return true; }
     );
 }
 
@@ -339,17 +271,12 @@ EvaluationResult At::evaluate(const EvaluationParameters& params) const {
 }
 
 EvaluationResult Length::evaluate(const EvaluationParameters& params) const {
-    const auto& value = args[0]->evaluate(params);
-    return value.match(
-        [&] (const Value& v) -> EvaluationResult {
-            return (float) v.match(
-                [&] (const std::string& s) { return s.size(); },
-                [&] (const std::vector<Value>& v) { return v.size(); },
-                [&] (const auto&) { assert(false); return -1; }
-                
-            );
-        },
-        [&] (const EvaluationError& error) -> EvaluationResult { return error; }
+    const auto& result = args[0]->evaluate(params);
+    if (!result) return result.error();
+    return (float) result->match(
+        [&] (const std::string& s) { return s.size(); },
+        [&] (const std::vector<Value>& v) { return v.size(); },
+        [&] (const auto&) { assert(false); return -1; }
     );
 }
 
@@ -379,24 +306,49 @@ EvaluationResult GeometryType::evaluate(const EvaluationParameters& params) cons
 }
 
 EvaluationResult Plus::evaluate(const EvaluationParameters& params) const  {
-    return evaluateBinaryOperator<float>(params, args,
-        {}, [](float memo, float next) { return memo + next; });
+    const auto& evaluated = evaluateArgs(params, args);
+    if (!evaluated) return evaluated.error();
+    float sum = 0.0f;
+    for (const Value& v : *evaluated) {
+        sum += v.get<float>();
+    }
+    return sum;
 }
 
 EvaluationResult Times::evaluate(const EvaluationParameters& params) const  {
-    return evaluateBinaryOperator<float>(params, args,
-        {}, [](float memo, float next) { return memo * next; });
+    const auto& evaluated = evaluateArgs(params, args);
+    if (!evaluated) return evaluated.error();
+    float product = 1.0f;
+    for (const Value& v : *evaluated) {
+        product *= v.get<float>();
+    }
+    return product;
 }
 
 EvaluationResult Minus::evaluate(const EvaluationParameters& params) const  {
-    return evaluateBinaryOperator<float>(params, args,
-        {}, [](float memo, float next) { return memo - next; });
+    return evaluateFromArgs<float, float>(params, args[0], args[1], [&] (float a, float b) {
+        return a - b;
+    });
 }
 
 EvaluationResult Divide::evaluate(const EvaluationParameters& params) const  {
-    return evaluateBinaryOperator<float>(params, args,
-        {}, [](float memo, float next) { return memo / next; });
+    return evaluateFromArgs<float, float>(params, args[0], args[1], [&] (float a, float b) {
+        return a / b;
+    });
 }
+
+EvaluationResult Mod::evaluate(const EvaluationParameters& params) const  {
+    return evaluateFromArgs<float, float>(params, args[0], args[1], [&] (float a, float b) {
+        return (float) fmod(a, b);
+    });
+}
+
+EvaluationResult Power::evaluate(const EvaluationParameters& params) const  {
+    return evaluateFromArgs<float, float>(params, args[0], args[1], [&] (float a, float b) {
+        return (float) pow(a, b);
+    });
+}
+
 
 } // namespace expression
 } // namespace style

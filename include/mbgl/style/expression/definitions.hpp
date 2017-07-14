@@ -65,7 +65,9 @@ public:
     }
     
     EvaluationResult evaluate(const EvaluationParameters& params) const override {
-        return args[0]->template evaluate<T>(params).match([&] (const auto& v) -> EvaluationResult { return v; });
+        const auto& result = args[0]->template evaluate<T>(params);
+        if (result) return *result;
+        return result.error();
     };
 };
 
@@ -293,6 +295,27 @@ public:
     };
     EvaluationResult evaluate(const EvaluationParameters& params) const override;
 };
+
+class Mod : public LambdaBase<Mod> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::NumberType type() { return type::Number; };
+    static std::vector<Params> signatures() {
+        return {{type::Number, type::Number}};
+    };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
+class Power : public LambdaBase<Power> {
+public:
+    using LambdaBase::LambdaBase;
+    static type::NumberType type() { return type::Number; };
+    static std::vector<Params> signatures() {
+        return {{type::Number, type::Number}};
+    };
+    EvaluationResult evaluate(const EvaluationParameters& params) const override;
+};
+
 
 } // namespace expression
 } // namespace style

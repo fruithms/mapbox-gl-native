@@ -163,18 +163,15 @@ void NodeExpression::Evaluate(const Nan::FunctionCallbackInfo<v8::Value>& info) 
     try {
         mapbox::geojson::feature feature = geoJSON->get<mapbox::geojson::feature>();
         auto result = expression->evaluate(zoom, feature);
-        result.match(
-            [&] (const Value& v) {
-                info.GetReturnValue().Set(toJS(v));
-            },
-            [&] (const EvaluationError& error) {
-                v8::Local<v8::Object> res = Nan::New<v8::Object>();
-                Nan::Set(res,
-                        Nan::New("error").ToLocalChecked(),
-                        Nan::New(error.message.c_str()).ToLocalChecked());
-                info.GetReturnValue().Set(res);
-            }
-        );
+        if (result) {
+            info.GetReturnValue().Set(toJS(*result));
+        } else {
+            v8::Local<v8::Object> res = Nan::New<v8::Object>();
+            Nan::Set(res,
+                    Nan::New("error").ToLocalChecked(),
+                    Nan::New(result.error().message.c_str()).ToLocalChecked());
+            info.GetReturnValue().Set(res);
+        }
     } catch(std::exception &ex) {
         return Nan::ThrowTypeError(ex.what());
     }
