@@ -66,6 +66,37 @@ std::unordered_map<std::string, CompoundExpression::Definition> initializeDefini
     return definitions;
 }
 
+static Definition defineGet() {
+    Definition definition;
+    definition.push_back(
+        std::make_unique<Signature<Result<Value> (const EvaluationParameters&, const std::string&)>>(
+            [](const EvaluationParameters& params, const std::string& key) -> Result<Value> {
+                const auto propertyValue = params.feature.getValue(key);
+                if (!propertyValue) {
+                    return EvaluationError {
+                        "Property '" + key + "' not found in feature.properties"
+                    };
+                }
+                return convertValue(*propertyValue);
+            },
+            false
+        )
+    );
+    definition.push_back(
+        std::make_unique<Signature<Result<Value> (const std::string&, const std::unordered_map<std::string, Value>&)>>(
+            [](const std::string& key, const std::unordered_map<std::string, Value>& object) -> Result<Value> {
+                if (object.find(key) == object.end()) {
+                    return EvaluationError {
+                        "Property '" + key + "' not found in object"
+                    };
+                }
+                return object.at(key);
+            }
+        )
+    );
+    return definition;
+}
+
 std::unordered_map<std::string, CompoundExpression::Definition> CompoundExpression::definitions = initializeDefinitions(
     define("e", []() -> Result<float> { return 2.7f; }),
     define("pi", []() -> Result<float> { return 3.141f; }),
@@ -79,17 +110,7 @@ std::unordered_map<std::string, CompoundExpression::Definition> CompoundExpressi
         return sum;
     }),
     define("-", [](float a, float b) -> Result<float> { return a - b; }),
-    defineFeatureFunction("get",
-        [](const EvaluationParameters& params, const std::string& key) -> Result<Value> {
-            const auto propertyValue = params.feature.getValue(key);
-            if (!propertyValue) {
-                return EvaluationError {
-                    "Property '" + key + "' not found in feature.properties"
-                };
-            }
-            return convertValue(*propertyValue);
-        }
-    ),
+    std::pair<std::string, Definition>("get", defineGet()),
     define("number", [](const Value& v) -> Result<float> {
         if (!v.is<float>()) {
             return EvaluationError {
