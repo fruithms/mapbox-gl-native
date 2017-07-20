@@ -162,7 +162,7 @@ private:
 template <class R, class... Params>
 struct Signature<R (*)(Params...)>
     : Signature<R (Params...)>
-{ using Signature<R (*)(Params...)>::Signature; };
+{ using Signature<R (Params...)>::Signature; };
 
 template <class T, class R, class... Params>
 struct Signature<R (T::*)(Params...) const>

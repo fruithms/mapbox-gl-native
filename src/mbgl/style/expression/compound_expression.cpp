@@ -97,11 +97,30 @@ static Definition defineGet() {
     return definition;
 }
 
+template <typename T>
+Result<T> assertion(const Value& v) {
+    if (!v.is<T>()) {
+        return EvaluationError {
+            "Expected value to be of type " + toString(valueTypeToExpressionType<T>()) +
+            ", but found " + toString(typeOf(v)) + " instead."
+        };
+    }
+    return v.get<T>();
+}
+
 std::unordered_map<std::string, CompoundExpression::Definition> CompoundExpression::definitions = initializeDefinitions(
     define("e", []() -> Result<float> { return 2.7f; }),
     define("pi", []() -> Result<float> { return 3.141f; }),
     define("ln2", []() -> Result<float> { return 0.693f; }),
+    
     define("typeof", [](const Value& v) -> Result<std::string> { return toString(typeOf(v)); }),
+    define("number", assertion<float>),
+    define("string", assertion<std::string>),
+    define("boolean", assertion<bool>),
+    define("array", assertion<std::vector<Value>>), // TODO: [array, type, value], [array, type, length, value]
+    
+    std::pair<std::string, Definition>("get", defineGet()),
+    
     define("+", [](const Varargs<float>& args) -> Result<float> {
         float sum = 0.0f;
         for (auto arg : args) {
@@ -109,27 +128,9 @@ std::unordered_map<std::string, CompoundExpression::Definition> CompoundExpressi
         }
         return sum;
     }),
-    define("-", [](float a, float b) -> Result<float> { return a - b; }),
-    std::pair<std::string, Definition>("get", defineGet()),
-    define("number", [](const Value& v) -> Result<float> {
-        if (!v.is<float>()) {
-            return EvaluationError {
-                "Expected Number but found " + toString(typeOf(v)) + " instead."
-            };
-        }
-        return v.get<float>();
-    })
+    define("-", [](float a, float b) -> Result<float> { return a - b; })
 );
 
-    
-//Result<std::string> assertString(const Value& v) {
-//    
-//}
-
-//        if (*op == "e") return MathConstant::e(context);
-//        if (*op == "pi") return MathConstant::pi(context);
-//        if (*op == "ln2") return MathConstant::ln2(context);
-//        if (*op == "typeof") return LambdaExpression::parse<TypeOf>(value, context);
 //        if (*op == "string") return LambdaExpression::parse<Assertion<std::string>>(value, context);
 //        if (*op == "number") return LambdaExpression::parse<Assertion<float>>(value, context);
 //        if (*op == "boolean") return LambdaExpression::parse<Assertion<bool>>(value, context);
